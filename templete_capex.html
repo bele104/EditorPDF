@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Tarefas da Área</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      color: #333;
+      line-height: 1.5;
+    }
+    h2 {
+      color: #d9534f;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 16px;
+    }
+    th, td {
+      border: 1px solid #ccc;
+      padding: 8px 12px;
+      text-align: left;
+    }
+    th {
+      background-color: #f5f5f5;
+    }
+    tr:nth-child(even) {
+      background-color: #fafafa;
+    }
+    .button-acao {
+      background-color: #4CAF50;
+      color: white;
+      padding: 6px 10px;
+      text-decoration: none;
+      border-radius: 4px;
+      display: inline-block;
+      font-weight: bold;
+      transition: background-color 0.3s;
+    }
+    .button-acao:hover {
+      background-color: #45a049;
+    }
+  </style>
+</head>
+<body>
+
+<h2>🔔 Tarefas da Área</h2>
+<p>Olá,</p>
+<p>Segue abaixo a lista de tarefas organizadas por status. Por favor, revise e acompanhe as atividades:</p>
+
+<!-- INICIO_TABELA -->
+<h2>Área: capex</h2>
+<h3>Atrasadas</h3>
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th>atividade</th>
+      <th>entrega</th>
+      <th>comentario</th>
+      <th>status</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Revisar planta elétrica</td>
+      <td>2025-09-08</td>
+      <td>Ajustes de layout</td>
+      <td>Backlog</td>
+    </tr>
+    <tr>
+      <td>Compra de equipamentos</td>
+      <td>2025-09-14</td>
+      <td>Em processo de licitação</td>
+      <td>On Hold</td>
+    </tr>
+    <tr>
+      <td>Auditoria de investimentos</td>
+      <td>2025-09-07</td>
+      <td>Relatório entregue</td>
+      <td>Verify</td>
+    </tr>
+  </tbody>
+</table>
+<h3>Essa Semana</h3>
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th>atividade</th>
+      <th>entrega</th>
+      <th>comentario</th>
+      <th>status</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Substituir cabos</td>
+      <td>2025-09-15</td>
+      <td>adasdasd</td>
+      <td>Ongoing</td>
+    </tr>
+  </tbody>
+</table>
+<h3>Próxima Semana</h3>
+<p>Nenhuma tarefa.</p>
+<!-- FIM_TABELA -->
+
+<p>Para dúvidas ou atualizações, consulte o sistema de gerenciamento de tarefas.</p>
+
+</body>
+</html>
