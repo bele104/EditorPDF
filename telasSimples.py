@@ -4,15 +4,15 @@ from pdf2image import convert_from_path
 from PIL import ImageTk, Image
 from PyPDF2 import PdfReader, PdfWriter
 import tempfile, os
+from tkinterdnd2 import DND_FILES, TkinterDnD
 
-root = Tk()
+root = TkinterDnD.Tk()  # Substitui Tk() para suportar drag & drop
 root.title("Mini iLovePDF - Reordenar Páginas")
 root.geometry("1000x600")
 
-# Lista que guarda: (imagem_tk, caminho_temp_da_pagina)
 pages = []
 
-# Frame rolável
+# Frame rolável para as páginas
 canvas = Canvas(root)
 scrollbar = Scrollbar(root, orient=VERTICAL, command=canvas.yview)
 scrollable_frame = Frame(canvas)
@@ -24,23 +24,41 @@ scrollable_frame.bind(
 
 canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
 canvas.configure(yscrollcommand=scrollbar.set)
-
 canvas.pack(side=LEFT, fill=BOTH, expand=True)
 scrollbar.pack(side=RIGHT, fill=Y)
 
+# Área central para drag & drop ou botão
+center_frame = Frame(root, width=400, height=300, bd=2, relief="ridge")
+center_frame.place(relx=0.5, rely=0.5, anchor=CENTER)
+Label(center_frame, text="Arraste seu PDF aqui\nou clique no botão abaixo").pack(pady=20)
 
-def carregar_pdf():
-    global pages
+def abrir_pdf_com_dialogo():
     file_path = filedialog.askopenfilename(filetypes=[("PDF", "*.pdf")])
-    if not file_path:
-        return
+    if file_path:
+        carregar_pdf(file_path)
 
-    # Limpa o frame anterior
+Button(center_frame, text="Abrir PDF", command=abrir_pdf_com_dialogo).pack(pady=10)
+
+# Suporte drag & drop
+def arrastar_pdf(event):
+    file_path = event.data
+    # No Windows, o caminho vem entre {}, então removemos
+    if file_path.startswith("{") and file_path.endswith("}"):
+        file_path = file_path[1:-1]
+    if file_path.lower().endswith(".pdf"):
+        carregar_pdf(file_path)
+    else:
+        messagebox.showerror("Erro", "Somente arquivos PDF são permitidos!")
+
+center_frame.drop_target_register(DND_FILES)
+center_frame.dnd_bind('<<Drop>>', arrastar_pdf)
+
+def carregar_pdf(file_path):
+    global pages
     for widget in scrollable_frame.winfo_children():
         widget.destroy()
     pages.clear()
 
-    # Converte páginas para imagens temporárias
     temp_dir = tempfile.mkdtemp()
     images = convert_from_path(file_path, dpi=100, fmt='png', poppler_path=r"C:\poppler-25.07.0\Library\bin")
 
@@ -52,13 +70,11 @@ def carregar_pdf():
 
     render_paginas()
 
-
 def mover_pagina(indice, direcao):
     novo_indice = indice + direcao
     if 0 <= novo_indice < len(pages):
         pages[indice], pages[novo_indice] = pages[novo_indice], pages[indice]
         render_paginas()
-
 
 def render_paginas():
     for widget in scrollable_frame.winfo_children():
@@ -77,12 +93,10 @@ def render_paginas():
         Button(info, text="▲", command=lambda i=i: mover_pagina(i, -1)).pack(pady=2)
         Button(info, text="▼", command=lambda i=i: mover_pagina(i, 1)).pack(pady=2)
 
-
 def salvar_pdf():
     if not pages:
         return
 
-    # Seleciona o PDF original
     file_path = filedialog.askopenfilename(title="Selecione o PDF original", filetypes=[("PDF","*.pdf")])
     if not file_path:
         return
@@ -90,7 +104,6 @@ def salvar_pdf():
     reader = PdfReader(file_path)
     writer = PdfWriter()
 
-    # Nova ordem
     ordem_indices = [int(os.path.basename(p[1]).split("_")[1].split(".")[0]) for p in pages]
     for idx in ordem_indices:
         writer.add_page(reader.pages[idx])
@@ -104,16 +117,8 @@ def salvar_pdf():
 
     messagebox.showinfo("Sucesso", "PDF salvo com nova ordem!")
 
-
-# Menu
-menu_bar = Menu(root)
-root.config(menu=menu_bar)
-
-file_menu = Menu(menu_bar, tearoff=0)
-menu_bar.add_cascade(label="Arquivo", menu=file_menu)
-file_menu.add_command(label="Abrir PDF", command=carregar_pdf)
-file_menu.add_command(label="Salvar novo PDF", command=salvar_pdf)
-file_menu.add_separator()
-file_menu.add_command(label="Sair", command=root.quit)
+# Botão salvar PDF
+save_button = Button(root, text="Salvar PDF", command=salvar_pdf, bg="green", fg="white")
+save_button.place(relx=0.9, rely=0.95, anchor="se")
 
 root.mainloop()
