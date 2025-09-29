@@ -14,7 +14,7 @@ from geradorDocumentos import Geradora
 class PDFEditor(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Po De Faça café? (PDF)")
+        self.setWindowTitle("PoDe Fazer café? (PDF)")
         self.setGeometry(100, 100, 1000, 700)
 
         # Lógica central do PDF
@@ -27,12 +27,15 @@ class PDFEditor(QMainWindow):
         self.btn_abrir = QPushButton("Abrir Documento")
         self.btn_salvar = QPushButton("Salvar Documento")
         self.btn_extrair = QPushButton("Extrair Texto")
-
+        self.btn_desfazer = QPushButton("Desfazer (Ctrl+Z)")
+        self.btn_refazer = QPushButton("Refazer (Ctrl+Alt+Z)")
         self.lista_paginas = QListWidget()
         self.lista_paginas.setFixedWidth(200)
         self.lista_paginas.itemClicked.connect(self.ir_para_pagina)
 
         layout_esquerda = QVBoxLayout()
+        layout_esquerda.addWidget(self.btn_desfazer)
+        layout_esquerda.addWidget(self.btn_refazer)
         layout_esquerda.addWidget(self.btn_abrir)
         layout_esquerda.addWidget(self.btn_salvar)
         layout_esquerda.addWidget(self.btn_extrair)
@@ -68,6 +71,9 @@ class PDFEditor(QMainWindow):
         # ------------------------------
         # Conecta botões
         # ------------------------------
+        self.btn_desfazer.clicked.connect(lambda: self.logica.desfazer(self))
+        self.btn_refazer.clicked.connect(lambda: self.logica.refazer(self))
+
         self.btn_abrir.clicked.connect(self.abrir_pdf)
         self.btn_salvar.clicked.connect(self.salvar_pdf)
         self.btn_extrair.clicked.connect(self.mostrar_texto_pdf)
