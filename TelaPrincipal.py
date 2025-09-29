@@ -51,6 +51,8 @@ class PDFEditor(QMainWindow):
         self.paginas_layout = QVBoxLayout()
         self.paginas_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         self.paginas_widget.setLayout(self.paginas_layout)
+        self.paginas_widgets = {}  # mapeia (nome_doc, pagina_idx) -> widget
+
         self.scroll_area.setWidget(self.paginas_widget)
 
         # ------------------------------
@@ -91,16 +93,18 @@ class PDFEditor(QMainWindow):
                 widget.setParent(None)
         self.lista_paginas.clear()
 
-        for nome_doc, dados in self.logica.documentos.items():
+        # Numerar documentos
+        for doc_num, (nome_doc, dados) in enumerate(self.logica.documentos.items()):
             doc = dados["doc"]
             ordem = dados["ordem_paginas"]
 
-            # --- Cabeçalho do arquivo ---
+            # Cabeçalho do arquivo
             header_item = QListWidgetItem(f"📄 {nome_doc}")
-            header_item.setFlags(Qt.ItemFlag.ItemIsEnabled)  # não clicável
+            header_item.setFlags(Qt.ItemFlag.ItemIsEnabled)
             self.lista_paginas.addItem(header_item)
 
             for index, pagina_idx in enumerate(ordem):
+                # Renderiza imagem da página
                 pix = doc[pagina_idx].get_pixmap(matrix=fitz.Matrix(zoom, zoom))
                 img = QImage(pix.samples, pix.width, pix.height, pix.stride, QImage.Format.Format_RGB888)
                 pixmap = QPixmap.fromImage(img)
@@ -128,12 +132,14 @@ class PDFEditor(QMainWindow):
 
                 page_layout.addLayout(btn_layout)
                 self.paginas_layout.addWidget(page_widget)
+                self.paginas_widgets[(nome_doc, pagina_idx)] = page_widget
 
-                # Lista da esquerda (com indentação)
-                descricao = dados["descricao_paginas"].get(pagina_idx, f"Página {pagina_idx+1}")
-                item = QListWidgetItem(f"   {pagina_idx+1}: {descricao}")  # três espaços antes
+                # Lista da esquerda com "Doc {numero_doc} - Página {numero}"
+                descricao = dados["descricao_paginas"].get(pagina_idx, f"Doc {doc_num} - Página {pagina_idx+1}")
+                item = QListWidgetItem(descricao)
                 item.setData(1000, (nome_doc, pagina_idx))
                 self.lista_paginas.addItem(item)
+
 
     # ------------------------------
     # Ações lógicas
@@ -155,19 +161,14 @@ class PDFEditor(QMainWindow):
     # ------------------------------
     def ir_para_pagina(self, item):
         data = item.data(1000)
-        if not data:
+        if data is None:
             return
         nome_doc, pagina_idx = data
-        # Encontra o widget correspondente
-        doc = self.logica.documentos[nome_doc]["doc"]
-        ordem = self.logica.documentos[nome_doc]["ordem_paginas"]
-        try:
-            idx_widget = ordem.index(pagina_idx)
-            page_widget = self.paginas_layout.itemAt(idx_widget).widget()
-            if page_widget:
-                self.scroll_area.ensureWidgetVisible(page_widget)
-        except ValueError:
-            pass
+        page_widget = self.paginas_widgets.get((nome_doc, pagina_idx))
+        if page_widget:
+            self.scroll_area.ensureWidgetVisible(page_widget)
+
+
 
     # ------------------------------
     # Salvar PDF / exportar

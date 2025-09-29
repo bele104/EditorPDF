@@ -15,6 +15,7 @@ class LogicaPagina:
     # Abrir documento
     # -----------------------------
     def abrir_documento(self, parent):
+        """Abre um diálogo para escolher e carregar QUALQUER documento"""
         arquivo, _ = QFileDialog.getOpenFileName(
             parent,
             "Abrir documento",
@@ -24,15 +25,17 @@ class LogicaPagina:
         if not arquivo:
             return False
 
+        # --- Conversão obrigatória ---
         caminho_pdf = self.conversor.processar_arquivo(arquivo)
         if not caminho_pdf:
             QMessageBox.warning(parent, "Erro", "Não foi possível converter o arquivo.")
             return False
 
-        nome = os.path.basename(caminho_pdf)
-        if nome in self.documentos:
-            return True  # evita duplicar
+        # Gera nome automático tipo Documento 0, Documento 1, ...
+        contador = len(self.documentos)
+        nome = f"Documento {contador}"
 
+        # Abre o PDF convertido
         doc = fitz.open(caminho_pdf)
         self.documentos[nome] = {
             "caminho": caminho_pdf,
@@ -41,6 +44,7 @@ class LogicaPagina:
             "descricao_paginas": {}
         }
 
+        # limpa histórico ao abrir novo documento
         self.historico.clear()
         self.refazer_historico.clear()
         return True
