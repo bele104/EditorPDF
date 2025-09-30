@@ -1,13 +1,13 @@
 import sys
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QVBoxLayout, QHBoxLayout, QWidget, QPushButton,
-    QListWidget, QListWidgetItem, QLabel, QScrollArea, QTextEdit
+    QListWidget, QListWidgetItem, QLabel, QScrollArea, QTextEdit, QDialog, QComboBox
 )
-from PyQt6.QtGui import QPixmap, QImage
+from PyQt6.QtGui import QPixmap, QImage, QKeySequence, QAction
 from PyQt6.QtCore import Qt
-import fitz
 from logicaPagina import LogicaPagina
 from conversor import ConversorArquivo
+import fitz
 
 
 class PDFEditor(QMainWindow):
@@ -16,7 +16,11 @@ class PDFEditor(QMainWindow):
         self.setWindowTitle("PoDe Fazer café? (PDF)")
         self.setGeometry(100, 100, 1000, 700)
 
+        # ------------------------------
+        # Lógica e Conversor
+        # ------------------------------
         self.logica = LogicaPagina()
+        self.logica.documentos_atualizados.connect(self.renderizar_paginas)
         self.conversor = ConversorArquivo()
 
         # ------------------------------
@@ -51,8 +55,7 @@ class PDFEditor(QMainWindow):
         self.paginas_layout = QVBoxLayout()
         self.paginas_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         self.paginas_widget.setLayout(self.paginas_layout)
-        self.paginas_widgets = {}  # mapeia (nome_doc, pagina_idx) -> widget
-
+        self.paginas_widgets = {}  # pagina_id -> widget
         self.scroll_area.setWidget(self.paginas_widget)
 
         # ------------------------------
@@ -61,7 +64,6 @@ class PDFEditor(QMainWindow):
         layout_principal = QHBoxLayout()
         layout_principal.addLayout(layout_esquerda, 1)
         layout_principal.addWidget(self.scroll_area, 4)
-
         container = QWidget()
         container.setLayout(layout_principal)
         self.setCentralWidget(container)
@@ -72,106 +74,164 @@ class PDFEditor(QMainWindow):
         self.btn_abrir.clicked.connect(self.abrir_pdf)
         self.btn_salvar.clicked.connect(self.salvar_pdf)
         self.btn_extrair.clicked.connect(self.mostrar_texto_pdf)
-        self.btn_desfazer.clicked.connect(lambda: self.logica.desfazer(self))
-        self.btn_refazer.clicked.connect(lambda: self.logica.refazer(self))
+        self.btn_desfazer.clicked.connect(self.logica.desfazer)
+        self.btn_refazer.clicked.connect(self.logica.refazer)
+
+        # ------------------------------
+        # Atalhos de teclado
+        # ------------------------------
+        desfazer_acao = QAction(self)
+        desfazer_acao.setShortcut(QKeySequence("Ctrl+Z"))
+        desfazer_acao.triggered.connect(self.logica.desfazer)
+        self.addAction(desfazer_acao)
+
+        refazer_acao = QAction(self)
+        refazer_acao.setShortcut(QKeySequence("Ctrl+Alt+Z"))
+        refazer_acao.triggered.connect(self.logica.refazer)
+        self.addAction(refazer_acao)
 
     # ------------------------------
     # Abrir PDF
     # ------------------------------
     def abrir_pdf(self):
         if self.logica.abrir_documento(self):
+            self.logica.salvar_estado()
             self.renderizar_paginas()
 
     # ------------------------------
-    # Renderizar páginas com cabeçalho
+    # Renderizar páginas
     # ------------------------------
     def renderizar_paginas(self, zoom=1.0):
-        # Limpa layout anterior
+        # Limpa layout antigo
         for i in reversed(range(self.paginas_layout.count())):
             widget = self.paginas_layout.itemAt(i).widget()
             if widget:
                 widget.setParent(None)
         self.lista_paginas.clear()
+        self.paginas_widgets.clear()
 
-        # Numerar documentos
-        for doc_num, (nome_doc, dados) in enumerate(self.logica.documentos.items()):
-            doc = dados["doc"]
-            ordem = dados["ordem_paginas"]
-
-            # Cabeçalho do arquivo
+        for nome_doc, dados in self.logica.documentos.items():
             header_item = QListWidgetItem(f"📄 {nome_doc}")
             header_item.setFlags(Qt.ItemFlag.ItemIsEnabled)
             self.lista_paginas.addItem(header_item)
 
-            for index, pagina_idx in enumerate(ordem):
-                # Renderiza imagem da página
-                pix = doc[pagina_idx].get_pixmap(matrix=fitz.Matrix(zoom, zoom))
-                img = QImage(pix.samples, pix.width, pix.height, pix.stride, QImage.Format.Format_RGB888)
-                pixmap = QPixmap.fromImage(img)
+            for idx, pagina_id in enumerate(dados["paginas"]):
+                pagina_info = self.logica.paginas[pagina_id]
+                doc = self.logica.documentos[nome_doc]["doc"]
+                pagina = doc.load_page(pagina_info["pagina_num"])
 
-                page_widget = QWidget()
-                page_layout = QHBoxLayout(page_widget)
+                try:
+                    pix = pagina.get_pixmap(matrix=fitz.Matrix(zoom, zoom))
+                    img = QImage(pix.samples, pix.width, pix.height, pix.stride, QImage.Format.Format_RGB888)
+                    pixmap = QPixmap.fromImage(img)
 
-                label_pixmap = QLabel()
-                label_pixmap.setPixmap(pixmap)
-                page_layout.addWidget(label_pixmap)
+                    page_widget = QWidget()
+                    page_layout = QHBoxLayout(page_widget)
 
-                # Botões de ação
-                btn_layout = QVBoxLayout()
-                if index > 0:
-                    btn_up = QPushButton("↑")
-                    btn_up.clicked.connect(lambda _, n=nome_doc, i=index: self.mover_para_cima(n, i))
-                    btn_layout.addWidget(btn_up)
-                if index < len(ordem) - 1:
-                    btn_down = QPushButton("↓")
-                    btn_down.clicked.connect(lambda _, n=nome_doc, i=index: self.mover_para_baixo(n, i))
-                    btn_layout.addWidget(btn_down)
-                btn_del = QPushButton("X")
-                btn_del.clicked.connect(lambda _, n=nome_doc, i=index: self.excluir_pagina(n, i))
-                btn_layout.addWidget(btn_del)
+                    label_pixmap = QLabel()
+                    label_pixmap.setPixmap(pixmap)
+                    page_layout.addWidget(label_pixmap)
 
-                page_layout.addLayout(btn_layout)
-                self.paginas_layout.addWidget(page_widget)
-                self.paginas_widgets[(nome_doc, pagina_idx)] = page_widget
+                    btn_layout = QVBoxLayout()
+                    btn_transferir = QPushButton("⇄")
+                    btn_transferir.clicked.connect(lambda _, pid=pagina_id: self.transferir_pagina(pid))
+                    btn_layout.addWidget(btn_transferir)
 
-                # Lista da esquerda com "Doc {numero_doc} - Página {numero}"
-                descricao = dados["descricao_paginas"].get(pagina_idx, f"Doc {doc_num} - Página {pagina_idx+1}")
-                item = QListWidgetItem(descricao)
-                item.setData(1000, (nome_doc, pagina_idx))
-                self.lista_paginas.addItem(item)
+                    if idx > 0:
+                        btn_up = QPushButton("↑")
+                        btn_up.clicked.connect(lambda _, d=nome_doc, i=idx: self.mover_para_cima(d, i))
+                        btn_layout.addWidget(btn_up)
+                    if idx < len(dados["paginas"]) - 1:
+                        btn_down = QPushButton("↓")
+                        btn_down.clicked.connect(lambda _, d=nome_doc, i=idx: self.mover_para_baixo(d, i))
+                        btn_layout.addWidget(btn_down)
 
+                    btn_del = QPushButton("X")
+                    btn_del.clicked.connect(lambda _, d=nome_doc, i=idx: self.excluir_pagina(d, i))
+                    btn_layout.addWidget(btn_del)
+
+                    page_layout.addLayout(btn_layout)
+                    self.paginas_layout.addWidget(page_widget)
+                    self.paginas_widgets[pagina_id] = page_widget
+
+                    descricao = pagina_info["descricao"]
+                    item_widget = QWidget()
+                    item_layout = QHBoxLayout(item_widget)
+                    item_layout.setContentsMargins(0, 0, 0, 0)
+                    lbl_item = QLabel(descricao)
+                    item_layout.addWidget(lbl_item)
+                    btn_lista_mover = QPushButton("⇄")
+                    btn_lista_mover.setMaximumWidth(30)
+                    btn_lista_mover.clicked.connect(lambda _, pid=pagina_id: self.transferir_pagina(pid))
+                    item_layout.addWidget(btn_lista_mover)
+                    item_widget.setLayout(item_layout)
+                    item_list = QListWidgetItem()
+                    self.lista_paginas.addItem(item_list)
+                    self.lista_paginas.setItemWidget(item_list, item_widget)
+                    item_list.setData(1000, pagina_id)
+
+                except Exception as e:
+                    print(f"Erro ao renderizar página {pagina_id} de {nome_doc}: {e}")
 
     # ------------------------------
-    # Ações lógicas
+    # Mover / Excluir páginas
     # ------------------------------
     def mover_para_cima(self, nome_doc, index):
+        self.logica.salvar_estado()
         self.logica.mover_para_cima(nome_doc, index)
         self.renderizar_paginas()
 
     def mover_para_baixo(self, nome_doc, index):
+        self.logica.salvar_estado()
         self.logica.mover_para_baixo(nome_doc, index)
         self.renderizar_paginas()
 
     def excluir_pagina(self, nome_doc, index):
+        self.logica.salvar_estado()
         self.logica.excluir_pagina(nome_doc, index)
         self.renderizar_paginas()
 
     # ------------------------------
-    # Ir para página clicada
+    # Transferir página
+    # ------------------------------
+    def transferir_pagina(self, pagina_id):
+        origem = self.logica.paginas[pagina_id]["doc_original"]
+        outros_docs = [n for n in self.logica.documentos if n != origem]
+        if not outros_docs:
+            return
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Selecionar documento destino")
+        layout = QVBoxLayout(dialog)
+        layout.addWidget(QLabel("Enviar página para:"))
+
+        combo = QComboBox()
+        combo.addItems(outros_docs)
+        layout.addWidget(combo)
+
+        btn_ok = QPushButton("OK")
+        btn_ok.clicked.connect(dialog.accept)
+        layout.addWidget(btn_ok)
+
+        if dialog.exec():
+            destino = combo.currentText()
+            self.logica.salvar_estado()
+            self.logica.mover_pagina_para_outro(pagina_id, destino)
+            self.renderizar_paginas()
+
+    # ------------------------------
+    # Ir para página
     # ------------------------------
     def ir_para_pagina(self, item):
-        data = item.data(1000)
-        if data is None:
+        pagina_id = item.data(1000)
+        if pagina_id is None:
             return
-        nome_doc, pagina_idx = data
-        page_widget = self.paginas_widgets.get((nome_doc, pagina_idx))
-        if page_widget:
-            self.scroll_area.ensureWidgetVisible(page_widget)
-
-
+        widget = self.paginas_widgets.get(pagina_id)
+        if widget:
+            self.scroll_area.ensureWidgetVisible(widget)
 
     # ------------------------------
-    # Salvar PDF / exportar
+    # Salvar documentos
     # ------------------------------
     def salvar_pdf(self):
         for nome_doc in self.logica.documentos:
@@ -179,12 +239,21 @@ class PDFEditor(QMainWindow):
         self.renderizar_paginas()
 
     # ------------------------------
-    # Mostrar texto extraído
+    # Extrair texto
     # ------------------------------
     def mostrar_texto_pdf(self):
         texto_total = ""
-        for nome_doc in self.logica.documentos:
-            texto_total += self.logica.mostrar_texto(nome_doc) + "\n\n"
+        for pagina_id, pagina_info in self.logica.paginas.items():
+            nome_doc = pagina_info["doc_original"]
+            descricao = pagina_info["descricao"]
+            try:
+                doc = self.logica.documentos[nome_doc]["doc"]
+                pagina = doc.load_page(pagina_info["pagina_num"])
+                texto = pagina.get_text("text")
+
+            except Exception as e:
+                texto = f"[Erro ao extrair texto: {e}]"
+            texto_total += f"--- {nome_doc} - {descricao} ---\n{texto}\n\n"
 
         if not texto_total.strip():
             return
@@ -196,17 +265,13 @@ class PDFEditor(QMainWindow):
         self.scroll_area.hide()
         self.centralWidget().layout().addWidget(self.editor_texto)
 
-        btn_voltar = QPushButton("Voltar para PDF")
-        btn_voltar.clicked.connect(self.voltar_para_pdf)
-        self.centralWidget().layout().addWidget(btn_voltar)
+        self.btn_voltar = QPushButton("Voltar para PDF")
+        self.btn_voltar.clicked.connect(self.voltar_para_pdf)
+        self.centralWidget().layout().addWidget(self.btn_voltar)
 
     def voltar_para_pdf(self):
-        if hasattr(self, "editor_texto"):
-            self.editor_texto.deleteLater()
-        for i in reversed(range(self.centralWidget().layout().count())):
-            widget = self.centralWidget().layout().itemAt(i).widget()
-            if isinstance(widget, QPushButton) and widget.text() == "Voltar para PDF":
-                widget.deleteLater()
+        self.editor_texto.deleteLater()
+        self.btn_voltar.deleteLater()
         self.scroll_area.show()
 
 

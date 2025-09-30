@@ -1,231 +1,152 @@
-import fitz  # PyMuPDF
-import os
-from PyQt6.QtWidgets import QMessageBox, QFileDialog, QDialog, QVBoxLayout, QLabel, QPushButton, QComboBox, QListWidgetItem
-from geradorDocumentos import Geradora
-from conversor import ConversorArquivo
+import fitz
+import copy
+from PyQt6.QtWidgets import QFileDialog, QMessageBox
+from PyQt6.QtCore import QObject, pyqtSignal
 
-class LogicaPagina:
+
+class LogicaPagina(QObject):
+    documentos_atualizados = pyqtSignal()
+
     def __init__(self):
-        self.conversor = ConversorArquivo()
-        self.historico = []          # histórico de ações para desfazer
-        self.refazer_historico = []  # histórico de ações desfeitas para refazer
-        self.documentos = {}         # {nome_arquivo: {"caminho":..., "doc":..., "ordem_paginas":..., "descricao_paginas":...}}
+        super().__init__()
+        self.documentos = {}  # nome_doc -> {"doc": fitz.Document, "paginas": [pagina_ids]}
+        self.paginas = {}     # pagina_id -> {"descricao", "doc_original", "pagina_num"}
+        self.historico = []
+        self.future = []
 
-    # -----------------------------
-    # Abrir documento
-    # -----------------------------
-    def abrir_documento(self, parent):
-        """Abre um diálogo para escolher e carregar QUALQUER documento"""
-        arquivo, _ = QFileDialog.getOpenFileName(
-            parent,
-            "Abrir documento",
-            "",
-            "Todos os arquivos (*.*);;Documentos (*.pdf *.docx *.txt);;Imagens (*.png *.jpg *.jpeg)"
-        )
-        if not arquivo:
-            return False
-
-        # --- Conversão obrigatória ---
-        caminho_pdf = self.conversor.processar_arquivo(arquivo)
-        if not caminho_pdf:
-            QMessageBox.warning(parent, "Erro", "Não foi possível converter o arquivo.")
-            return False
-
-        # Gera nome automático tipo Documento 0, Documento 1, ...
-        contador = len(self.documentos)
-        nome = f"Documento {contador}"
-
-        # Abre o PDF convertido
-        doc = fitz.open(caminho_pdf)
-        self.documentos[nome] = {
-            "caminho": caminho_pdf,
-            "doc": doc,
-            "ordem_paginas": list(range(len(doc))),
-            "descricao_paginas": {}
+    # ------------------------------
+    # Estado (Desfazer / Refazer)
+    # ------------------------------
+    def salvar_estado(self):
+        estado = {
+            "documentos": copy.deepcopy({
+                nome: {"paginas": dados["paginas"][:]}
+                for nome, dados in self.documentos.items()
+            }),
+            "paginas": copy.deepcopy({
+                pid: {
+                    "descricao": p["descricao"],
+                    "doc_original": p["doc_original"],
+                    "pagina_num": p["pagina_num"],
+                }
+                for pid, p in self.paginas.items()
+            }),
         }
+        self.historico.append(estado)
+        self.future.clear()
 
-        # limpa histórico ao abrir novo documento
-        self.historico.clear()
-        self.refazer_historico.clear()
-        return True
-
-    # -----------------------------
-    # Salvar documento
-    # -----------------------------
-    def salvar_documento(self, parent, nome_arquivo):
-        if nome_arquivo not in self.documentos:
-            QMessageBox.warning(parent, "Aviso", "Documento não carregado.")
-            return False
-
-        dialog = QDialog(parent)
-        dialog.setWindowTitle("Escolher formato")
-        dialog.setFixedSize(300, 150)
-        layout = QVBoxLayout(dialog)
-        layout.addWidget(QLabel("Selecione o formato para salvar:"))
-
-        combo_formatos = QComboBox()
-        combo_formatos.addItems(["PDF", "PNG", "JPG", "DOCX", "TXT"])
-        layout.addWidget(combo_formatos)
-
-        btn_confirmar = QPushButton("Confirmar")
-        btn_confirmar.clicked.connect(dialog.accept)
-        layout.addWidget(btn_confirmar)
-
-        if dialog.exec():
-            formato = combo_formatos.currentText()
-            filtro = f"{formato} (*.{formato.lower()})"
-            novo_caminho, _ = QFileDialog.getSaveFileName(
-                parent, f"Salvar como {formato}", "", filtro
-            )
-            if not novo_caminho:
-                return False
-
-            doc_info = self.documentos[nome_arquivo]
-            geradora = Geradora(doc_info["caminho"], doc_info["ordem_paginas"], parent)
-
-            if formato == "PDF":
-                geradora.salvar_como_pdf(novo_caminho)
-            elif formato in ["PNG", "JPG"]:
-                geradora.salvar_como_imagem(novo_caminho, formato)
-            elif formato == "DOCX":
-                geradora.salvar_como_docx(novo_caminho)
-            elif formato == "TXT":
-                geradora.salvar_como_txt(novo_caminho)
-
-            QMessageBox.information(parent, "Sucesso", f"Documento salvo em:\n{novo_caminho}")
-            if formato == "PDF":
-                doc_info["caminho"] = novo_caminho
-                doc_info["doc"] = fitz.open(novo_caminho)
-                doc_info["ordem_paginas"] = list(range(len(doc_info["doc"])))
-            return True
-        return False
-
-    # -----------------------------
-    # Mostrar texto
-    # -----------------------------
-    def mostrar_texto(self, nome_arquivo):
-        if nome_arquivo not in self.documentos:
-            return ""
-        doc_info = self.documentos[nome_arquivo]
-        texto_total = ""
-        for idx in doc_info["ordem_paginas"]:
-            pagina = doc_info["doc"][idx]
-            texto_total += f"--- Página {idx+1} ---\n{pagina.get_text('text')}\n\n"
-        return texto_total.strip()
-
-    # -----------------------------
-    # Renderizar páginas
-    # -----------------------------
-    def renderizar_paginas(self, zoom=1.0, lista_widget=None):
-        """
-        Retorna dicionário de pixmaps para cada documento.
-        Se lista_widget for fornecido, atualiza a QListWidget.
-        """
-        all_pixmaps = {}
-        if lista_widget:
-            lista_widget.clear()
-
-        for nome, doc_info in self.documentos.items():
-            pixmaps = []
-            for idx in doc_info["ordem_paginas"]:
-                pagina = doc_info["doc"][idx]
-                mat = fitz.Matrix(zoom, zoom)
-                pix = pagina.get_pixmap(matrix=mat)
-                pixmaps.append(pix)
-                if lista_widget:
-                    descricao = doc_info["descricao_paginas"].get(idx, f"Página {idx+1}")
-                    item_text = f"{nome} - {descricao}"
-                    item = QListWidgetItem(item_text)
-                    item.setData(1000, (nome, idx))
-                    lista_widget.addItem(item)
-            all_pixmaps[nome] = pixmaps
-        return all_pixmaps
-
-    # -----------------------------
-    # Lógica de manipulação de páginas
-    # -----------------------------
-    def mover_para_cima(self, nome_arquivo, index):
-        paginas = self.documentos[nome_arquivo]["ordem_paginas"]
-        if index > 0:
-            self.salvar_estado(nome_arquivo)
-            paginas[index], paginas[index-1] = paginas[index-1], paginas[index]
-
-    def mover_para_baixo(self, nome_arquivo, index):
-        paginas = self.documentos[nome_arquivo]["ordem_paginas"]
-        if index < len(paginas) - 1:
-            self.salvar_estado(nome_arquivo)
-            paginas[index], paginas[index+1] = paginas[index+1], paginas[index]
-
-    def excluir_pagina(self, nome_arquivo, index):
-        paginas = self.documentos[nome_arquivo]["ordem_paginas"]
-        if 0 <= index < len(paginas):
-            self.salvar_estado(nome_arquivo)
-            paginas.pop(index)
-
-    def adicionar_descricao(self, nome_arquivo, pagina_num, descricao):
-        self.salvar_estado(nome_arquivo)
-        self.documentos[nome_arquivo]["descricao_paginas"][pagina_num] = descricao
-
-    # -----------------------------
-    # Histórico
-    # -----------------------------
-    def salvar_estado(self, nome_arquivo):
-        doc_info = self.documentos[nome_arquivo]
-        estado_atual = {
-            "nome_arquivo": nome_arquivo,
-            "ordem_paginas": doc_info["ordem_paginas"].copy(),
-            "descricao_paginas": doc_info["descricao_paginas"].copy()
-        }
-        self.historico.append(estado_atual)
-        self.refazer_historico.clear()
-
-    def desfazer(self, parent=None):
+    def desfazer(self):
         if not self.historico:
-            if parent:
-                QMessageBox.information(parent, "Desfazer", "Nada para desfazer")
             return
         estado = self.historico.pop()
-        self.refazer_historico.append({
-            "nome_arquivo": estado["nome_arquivo"],
-            "ordem_paginas": self.documentos[estado["nome_arquivo"]]["ordem_paginas"].copy(),
-            "descricao_paginas": self.documentos[estado["nome_arquivo"]]["descricao_paginas"].copy()
+        self.future.append({
+            "documentos": copy.deepcopy({
+                nome: {"paginas": dados["paginas"][:]}
+                for nome, dados in self.documentos.items()
+            }),
+            "paginas": copy.deepcopy(self.paginas),
         })
-        nome = estado["nome_arquivo"]
-        self.documentos[nome]["ordem_paginas"] = estado["ordem_paginas"]
-        self.documentos[nome]["descricao_paginas"] = estado["descricao_paginas"]
-        if parent:
-            parent.renderizar_paginas()
+        self._restaurar_estado(estado)
+        self.documentos_atualizados.emit()
 
-    def refazer(self, parent=None):
-        if not self.refazer_historico:
-            if parent:
-                QMessageBox.information(parent, "Refazer", "Nada para refazer")
+    def refazer(self):
+        if not self.future:
             return
-        estado = self.refazer_historico.pop()
+        estado = self.future.pop()
         self.historico.append({
-            "nome_arquivo": estado["nome_arquivo"],
-            "ordem_paginas": self.documentos[estado["nome_arquivo"]]["ordem_paginas"].copy(),
-            "descricao_paginas": self.documentos[estado["nome_arquivo"]]["descricao_paginas"].copy()
+            "documentos": copy.deepcopy({
+                nome: {"paginas": dados["paginas"][:]}
+                for nome, dados in self.documentos.items()
+            }),
+            "paginas": copy.deepcopy(self.paginas),
         })
-        nome = estado["nome_arquivo"]
-        self.documentos[nome]["ordem_paginas"] = estado["ordem_paginas"]
-        self.documentos[nome]["descricao_paginas"] = estado["descricao_paginas"]
-        if parent:
-            parent.renderizar_paginas()
+        self._restaurar_estado(estado)
+        self.documentos_atualizados.emit()
 
-    # -----------------------------
-    # Lista organizada de arquivos e páginas
-    # -----------------------------
-    def obter_lista_arquivos_paginas(self):
-        lista = []
-        for nome, info in self.documentos.items():
-            lista.append((nome, None))  # cabeçalho do arquivo
-            for idx in info["ordem_paginas"]:
-                lista.append((nome, idx))
-        return lista
+    def _restaurar_estado(self, estado):
+        for nome_doc, dados in self.documentos.items():
+            # mantém os fitz.Document abertos
+            if nome_doc in estado["documentos"]:
+                dados["paginas"] = estado["documentos"][nome_doc]["paginas"]
 
-    def obter_descricao(self, nome_arquivo, pagina_num):
-        if pagina_num is None:
-            return nome_arquivo
-        info = self.documentos.get(nome_arquivo, {})
-        return info.get("descricao_paginas", {}).get(pagina_num, f"Página {pagina_num+1}")
+        self.paginas = estado["paginas"]
+
+    # ------------------------------
+    # Abrir Documento
+    # ------------------------------
+    def abrir_documento(self, janela):
+        caminho, _ = QFileDialog.getOpenFileName(janela, "Abrir PDF", "", "PDF Files (*.pdf)")
+        if not caminho:
+            return False
+        try:
+            doc = fitz.open(caminho)
+            nome_doc = caminho.split("/")[-1]
+            self.documentos[nome_doc] = {"doc": doc, "paginas": []}
+
+            for i in range(len(doc)):
+                pid = f"{nome_doc}_p{i}"
+                self.paginas[pid] = {
+                    "descricao": f"{nome_doc} - Página {i+1}",
+                    "doc_original": nome_doc,
+                    "pagina_num": i
+                }
+                self.documentos[nome_doc]["paginas"].append(pid)
+
+            self.salvar_estado()
+            self.documentos_atualizados.emit()
+            return True
+        except Exception as e:
+            QMessageBox.critical(janela, "Erro", f"Erro ao abrir PDF: {e}")
+            return False
+
+    # ------------------------------
+    # Operações em páginas
+    # ------------------------------
+    def mover_para_cima(self, nome_doc, index):
+        if index > 0:
+            paginas = self.documentos[nome_doc]["paginas"]
+            paginas[index - 1], paginas[index] = paginas[index], paginas[index - 1]
+            self.salvar_estado()
+            self.documentos_atualizados.emit()
+
+    def mover_para_baixo(self, nome_doc, index):
+        paginas = self.documentos[nome_doc]["paginas"]
+        if index < len(paginas) - 1:
+            paginas[index + 1], paginas[index] = paginas[index], paginas[index + 1]
+            self.salvar_estado()
+            self.documentos_atualizados.emit()
+
+    def excluir_pagina(self, nome_doc, index):
+        paginas = self.documentos[nome_doc]["paginas"]
+        if 0 <= index < len(paginas):
+            paginas.pop(index)
+            self.salvar_estado()
+            self.documentos_atualizados.emit()
+
+    def mover_pagina_para_outro(self, pagina_id, destino):
+        origem = self.paginas[pagina_id]["doc_original"]
+        if origem == destino:
+            return
+        self.documentos[origem]["paginas"].remove(pagina_id)
+        self.documentos[destino]["paginas"].append(pagina_id)
+        self.paginas[pagina_id]["doc_original"] = destino
+        self.salvar_estado()
+        self.documentos_atualizados.emit()
+
+    # ------------------------------
+    # Salvar Documento
+    # ------------------------------
+    def salvar_documento(self, janela, nome_doc):
+        caminho, _ = QFileDialog.getSaveFileName(janela, f"Salvar {nome_doc}", "", "PDF Files (*.pdf)")
+        if not caminho:
+            return
+        try:
+            novo_doc = fitz.open()
+            for pid in self.documentos[nome_doc]["paginas"]:
+                pagina_info = self.paginas[pid]
+                doc_original = self.documentos[pagina_info["doc_original"]]["doc"]
+                pagina = doc_original.load_page(pagina_info["pagina_num"])
+                novo_doc.insert_pdf(doc_original, from_page=pagina.number, to_page=pagina.number)
+            novo_doc.save(caminho)
+        except Exception as e:
+            QMessageBox.critical(janela, "Erro", f"Erro ao salvar PDF: {e}")
