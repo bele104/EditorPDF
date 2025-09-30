@@ -6,7 +6,6 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtGui import QPixmap, QImage, QKeySequence, QAction
 from PyQt6.QtCore import Qt
 from logicaPagina import LogicaPagina
-from conversor import ConversorArquivo
 import fitz
 
 
@@ -17,14 +16,13 @@ class PDFEditor(QMainWindow):
         self.setGeometry(100, 100, 1000, 700)
 
         # ------------------------------
-        # Lógica e Conversor
+        # Lógica
         # ------------------------------
         self.logica = LogicaPagina()
         self.logica.documentos_atualizados.connect(self.renderizar_paginas)
-        self.conversor = ConversorArquivo()
 
         # ------------------------------
-        # Painel ESQUERDO
+        # Painel esquerdo
         # ------------------------------
         self.btn_abrir = QPushButton("Abrir Documento")
         self.btn_salvar = QPushButton("Salvar Documento")
@@ -94,15 +92,12 @@ class PDFEditor(QMainWindow):
     # Abrir PDF
     # ------------------------------
     def abrir_pdf(self):
-        if self.logica.abrir_documento(self):
-            self.logica.salvar_estado()
-            self.renderizar_paginas()
+        self.logica.abrir_documento(self)
 
     # ------------------------------
     # Renderizar páginas
     # ------------------------------
     def renderizar_paginas(self, zoom=1.0):
-        # Limpa layout antigo
         for i in reversed(range(self.paginas_layout.count())):
             widget = self.paginas_layout.itemAt(i).widget()
             if widget:
@@ -139,21 +134,22 @@ class PDFEditor(QMainWindow):
 
                     if idx > 0:
                         btn_up = QPushButton("↑")
-                        btn_up.clicked.connect(lambda _, d=nome_doc, i=idx: self.mover_para_cima(d, i))
+                        btn_up.clicked.connect(lambda _, d=nome_doc, i=idx: self.logica.mover_para_cima(d, i))
                         btn_layout.addWidget(btn_up)
                     if idx < len(dados["paginas"]) - 1:
                         btn_down = QPushButton("↓")
-                        btn_down.clicked.connect(lambda _, d=nome_doc, i=idx: self.mover_para_baixo(d, i))
+                        btn_down.clicked.connect(lambda _, d=nome_doc, i=idx: self.logica.mover_para_baixo(d, i))
                         btn_layout.addWidget(btn_down)
 
                     btn_del = QPushButton("X")
-                    btn_del.clicked.connect(lambda _, d=nome_doc, i=idx: self.excluir_pagina(d, i))
+                    btn_del.clicked.connect(lambda _, d=nome_doc, i=idx: self.logica.excluir_pagina(d, i))
                     btn_layout.addWidget(btn_del)
 
                     page_layout.addLayout(btn_layout)
                     self.paginas_layout.addWidget(page_widget)
                     self.paginas_widgets[pagina_id] = page_widget
 
+                    # Lista lateral
                     descricao = pagina_info["descricao"]
                     item_widget = QWidget()
                     item_layout = QHBoxLayout(item_widget)
@@ -172,24 +168,6 @@ class PDFEditor(QMainWindow):
 
                 except Exception as e:
                     print(f"Erro ao renderizar página {pagina_id} de {nome_doc}: {e}")
-
-    # ------------------------------
-    # Mover / Excluir páginas
-    # ------------------------------
-    def mover_para_cima(self, nome_doc, index):
-        self.logica.salvar_estado()
-        self.logica.mover_para_cima(nome_doc, index)
-        self.renderizar_paginas()
-
-    def mover_para_baixo(self, nome_doc, index):
-        self.logica.salvar_estado()
-        self.logica.mover_para_baixo(nome_doc, index)
-        self.renderizar_paginas()
-
-    def excluir_pagina(self, nome_doc, index):
-        self.logica.salvar_estado()
-        self.logica.excluir_pagina(nome_doc, index)
-        self.renderizar_paginas()
 
     # ------------------------------
     # Transferir página
@@ -215,9 +193,7 @@ class PDFEditor(QMainWindow):
 
         if dialog.exec():
             destino = combo.currentText()
-            self.logica.salvar_estado()
             self.logica.mover_pagina_para_outro(pagina_id, destino)
-            self.renderizar_paginas()
 
     # ------------------------------
     # Ir para página
@@ -236,12 +212,18 @@ class PDFEditor(QMainWindow):
     def salvar_pdf(self):
         for nome_doc in self.logica.documentos:
             self.logica.salvar_documento(self, nome_doc)
-        self.renderizar_paginas()
 
     # ------------------------------
     # Extrair texto
     # ------------------------------
     def mostrar_texto_pdf(self):
+        if getattr(self, "editor_texto", None):
+            self.editor_texto.setParent(None)
+            self.editor_texto.deleteLater()
+        if getattr(self, "btn_voltar", None):
+            self.btn_voltar.setParent(None)
+            self.btn_voltar.deleteLater()
+
         texto_total = ""
         for pagina_id, pagina_info in self.logica.paginas.items():
             nome_doc = pagina_info["doc_original"]
@@ -250,7 +232,6 @@ class PDFEditor(QMainWindow):
                 doc = self.logica.documentos[nome_doc]["doc"]
                 pagina = doc.load_page(pagina_info["pagina_num"])
                 texto = pagina.get_text("text")
-
             except Exception as e:
                 texto = f"[Erro ao extrair texto: {e}]"
             texto_total += f"--- {nome_doc} - {descricao} ---\n{texto}\n\n"
@@ -270,8 +251,14 @@ class PDFEditor(QMainWindow):
         self.centralWidget().layout().addWidget(self.btn_voltar)
 
     def voltar_para_pdf(self):
-        self.editor_texto.deleteLater()
-        self.btn_voltar.deleteLater()
+        if getattr(self, "editor_texto", None):
+            self.editor_texto.setParent(None)
+            self.editor_texto.deleteLater()
+            self.editor_texto = None
+        if getattr(self, "btn_voltar", None):
+            self.btn_voltar.setParent(None)
+            self.btn_voltar.deleteLater()
+            self.btn_voltar = None
         self.scroll_area.show()
 
 
