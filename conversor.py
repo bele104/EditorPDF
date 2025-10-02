@@ -128,6 +128,7 @@ class ConversorArquivo:
         """
         nome_pdf = os.path.splitext(os.path.basename(caminho_arquivo))[0] + '.pdf'
         caminho_pdf = os.path.join(os.path.dirname(caminho_arquivo), nome_pdf)
+        print (caminho_pdf)
         return caminho_pdf
 
     def processar_arquivo(self, caminho_arquivo):
@@ -147,6 +148,7 @@ class ConversorArquivo:
 
         try:
             if tipo == "PDF":
+         
                 # apenas copia o PDF original para o temporário
                 shutil.copy(caminho_arquivo, caminho_pdf_temp)
             elif tipo in ["Word (DOCX)", "Word (DOC)"]:

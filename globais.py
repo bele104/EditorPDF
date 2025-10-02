@@ -1,0 +1,89 @@
+# globais.py
+import copy
+# globais.py
+# --------------------------------
+# Variáveis globais do editor PDF
+# --------------------------------
+
+# Dicionário com todos os documentos abertos
+# Exemplo:
+# {
+#   "arquivo.pdf": {
+#       "doc": <fitz.Document>,
+#       "paginas": ["arquivo.pdf_p0", "arquivo.pdf_p1", ...]
+#   }
+# }
+DOCUMENTOS = {}
+
+# Metadados de todas as páginas
+# Exemplo:
+# {
+#   "arquivo.pdf_p0": {
+#       "descricao": "arquivo.pdf - Página 1",
+#       "doc_original": "arquivo.pdf",
+#       "pagina_num": 0
+#   }
+# }
+PAGINAS = {}
+
+# Pilhas de histórico (para desfazer/refazer)
+HISTORICO = []
+FUTURO = []
+
+# Configurações gerais
+ZOOM_PADRAO = 1.0
+
+# ------------------------------
+# Classe para desfazer/refazer
+# ------------------------------
+class Historico:
+    @staticmethod
+    def salvar_estado():
+        estado = {
+            "documentos": {nome: {"paginas": dados["paginas"][:]} 
+                           for nome, dados in DOCUMENTOS.items()},
+            "paginas": {pid: {"descricao": p["descricao"],
+                              "doc_original": p["doc_original"],
+                              "pagina_num": p["pagina_num"]}
+                        for pid, p in PAGINAS.items()}
+        }
+        HISTORICO.append(estado)
+        FUTURO.clear()
+
+    @staticmethod
+    def desfazer():
+        if not HISTORICO:
+            return
+        estado_atual = {
+            "documentos": {nome: {"paginas": dados["paginas"][:]} 
+                           for nome, dados in DOCUMENTOS.items()},
+            "paginas": copy.deepcopy(PAGINAS)
+        }
+        FUTURO.append(estado_atual)
+
+        estado = HISTORICO.pop()
+        for nome_doc, dados in DOCUMENTOS.items():
+            if nome_doc in estado["documentos"]:
+                dados["paginas"] = estado["documentos"][nome_doc]["paginas"]
+
+        PAGINAS.clear()
+        PAGINAS.update(copy.deepcopy(estado["paginas"]))
+
+    @staticmethod
+    def refazer():
+        if not FUTURO:
+            return
+        estado_atual = {
+            "documentos": {nome: {"paginas": dados["paginas"][:]} 
+                           for nome, dados in DOCUMENTOS.items()},
+            "paginas": copy.deepcopy(PAGINAS)
+        }
+        HISTORICO.append(estado_atual)
+
+        estado = FUTURO.pop()
+        for nome_doc, dados in DOCUMENTOS.items():
+            if nome_doc in estado["documentos"]:
+                dados["paginas"] = estado["documentos"][nome_doc]["paginas"]
+
+        PAGINAS.clear()
+        PAGINAS.update(copy.deepcopy(estado["paginas"]))

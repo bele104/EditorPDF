@@ -1,111 +1,75 @@
 import fitz
+import os
+
 import copy
 from PyQt6.QtWidgets import QFileDialog, QMessageBox
 from PyQt6.QtCore import QObject, pyqtSignal
-
-
+import globais as G 
+from conversor import ConversorArquivo as conversor
 class LogicaPagina(QObject):
     documentos_atualizados = pyqtSignal()
-
+    
     def __init__(self):
         super().__init__()
         self.documentos = {}
         self.paginas = {}
-        self.historico = []
+        self.conversor_temporarios=conversor()
         self.future = []
-
-    # ------------------------------
-    # HISTÓRICO: DESFAZER / REFAZER
-    # ------------------------------
-
-    def salvar_estado(self):
-        """
-        Salva apenas as listas de páginas e metadados, sem incluir objetos fitz.Document.
-        """
-        estado = {
-            "documentos": {
-                nome: {"paginas": dados["paginas"][:]}
-                for nome, dados in self.documentos.items()
-            },
-            "paginas": {
-                pid: {
-                    "descricao": p["descricao"],
-                    "doc_original": p["doc_original"],
-                    "pagina_num": p["pagina_num"],
-                }
-                for pid, p in self.paginas.items()
-            }
-        }
-        self.historico.append(estado)
-        self.future.clear()
-
-    def desfazer(self):
-        if not self.historico:
-            return
-        estado_atual = {
-            "documentos": {nome: {"paginas": dados["paginas"][:]} for nome, dados in self.documentos.items()},
-            "paginas": self.paginas.copy()
-        }
-        self.future.append(estado_atual)
-
-        estado = self.historico.pop()
-        for nome_doc, dados in self.documentos.items():
-            if nome_doc in estado["documentos"]:
-                dados["paginas"] = estado["documentos"][nome_doc]["paginas"]
-        self.paginas = estado["paginas"]
-
-        self.documentos_atualizados.emit()
-
-
-    def refazer(self):
-        if not self.future:
-            return
-
-        # Salva o estado atual no histórico antes de refazer
-        estado_atual = {
-            "documentos": {nome: {"paginas": dados["paginas"][:]} for nome, dados in self.documentos.items()},
-            "paginas": self.paginas.copy()
-        }
-        self.historico.append(estado_atual)
-
-        # Restaura o estado do futuro
-        estado = self.future.pop()
-        for nome_doc, dados in self.documentos.items():
-            if nome_doc in estado["documentos"]:
-                dados["paginas"] = estado["documentos"][nome_doc]["paginas"]
-        self.paginas = estado["paginas"]
-
-        # Atualiza a interface
-        self.documentos_atualizados.emit()
         
-    def _restaurar_estado(self, estado):
-        self.documentos = copy.deepcopy(estado["documentos"])
-        self.paginas = copy.deepcopy(estado["paginas"])
-
     # ------------------------------
     # ABRIR DOCUMENTO
     # ------------------------------
 
     def abrir_documento(self, janela):
-        caminho, _ = QFileDialog.getOpenFileName(janela, "Abrir PDF", "", "PDF Files (*.pdf)")
+        filtros = "Arquivos suportados (*.pdf *.doc *.docx *.xls *.xlsx *.txt *.html *.jpg *.jpeg *.png)"
+        caminho_origem, _ = QFileDialog.getOpenFileName(janela, "Abrir Aquivo", "", filtros)
+        if not caminho_origem:
+            return False
+        
+
+       # ex: "meuarquivo.pdf"
+        # Converte o arquivo para PDF temporário, se necessário
+        caminho = self.conversor_temporarios.processar_arquivo(caminho_origem)
         if not caminho:
             return False
         try:
             doc = fitz.open(caminho)
-            nome_doc = caminho.split("/")[-1]
-            self.documentos[nome_doc] = {"doc": doc, "paginas": []}
 
+     
+            nome_doc = os.path.basename(caminho_origem)
+            # Exemplo: só para referência
+            header_nome = f"📄 {nome_doc}"
+            G.DOCUMENTOS[nome_doc] = {"doc": doc, "paginas": [],"header": f"📄 {header_nome}"}
+
+            print(G.DOCUMENTOS[nome_doc])
+            
             for i in range(len(doc)):
-                pid = f"{nome_doc}_p{i}"
-                self.paginas[pid] = {
-                    "descricao": f"{nome_doc} - Página {i+1}",
-                    "doc_original": nome_doc,
-                    "pagina_num": i
-                }
-                self.documentos[nome_doc]["paginas"].append(pid)
+                
+                pid = f"{nome_doc}_p{i+1}"
 
-            self.salvar_estado()  # apenas aqui, antes de qualquer alteração
+                pagina=doc.load_page(i)
+                pix = pagina.get_pixmap()
+                # Armazena página de forma independente
+                G.PAGINAS[pid] = {
+                    "pixmap": pix,  # opcional, só se for renderizar
+                    "descricao": f"{nome_doc}- Página {i+1}",
+                    "doc_original": nome_doc,
+                    "pagina_num": i,
+                    
+                }
+                # Guarda ID da página no documento
+                G.DOCUMENTOS[nome_doc]["paginas"].append(pid)
+                
+            for pid, info in G.PAGINAS.items():
+                print(f"Página ID: {pid}")
+                for chave, valor in info.items():
+                    if chave != "pixmap":  # opcional: não mostrar pixmap pesado
+                        print(f"  {chave}: {valor}")
+                print("-" * 40)
+
+            G.Historico.salvar_estado()# apenas aqui, antes de qualquer alteração
             self.documentos_atualizados.emit()
+       
             return True
         except Exception as e:
             QMessageBox.critical(janela, "Erro", f"Erro ao abrir PDF: {e}")
@@ -132,7 +96,7 @@ class LogicaPagina(QObject):
     def excluir_pagina(self, nome_doc, index):
         paginas = self.documentos[nome_doc]["paginas"]
         if 0 <= index < len(paginas):
-            self.salvar_estado()
+            G.Historico.salvar_estado()# apenas aqui, antes de qualquer alteração
             paginas.pop(index)
             self.documentos_atualizados.emit()
 
@@ -140,7 +104,7 @@ class LogicaPagina(QObject):
         origem = self.paginas[pagina_id]["doc_original"]
         if origem == destino:
             return
-        self.salvar_estado()
+        G.Historico.salvar_estado()# apenas aqui, antes de qualquer alteração
         self.documentos[origem]["paginas"].remove(pagina_id)
         self.documentos[destino]["paginas"].append(pagina_id)
         self.paginas[pagina_id]["doc_original"] = destino
