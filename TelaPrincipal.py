@@ -24,10 +24,6 @@ class PDFEditor(QMainWindow):
         # ------------------------------
 
         self.logica = LogicaPagina()
-        
-
-
-        
 
         # ------------------------------
         # Painel esquerdo
@@ -109,31 +105,34 @@ class PDFEditor(QMainWindow):
         self.gerar.renderizar_todas(G.ZOOM_PADRAO)  # passa apenas o zoom se quiser
 
 
-
+    #DEIXA A IMAGEM NO TAMANHO CERTO
     def resizeEvent(self, event):
         super().resizeEvent(event)
 
-        if not hasattr(self, "paginas_widgets"):
-            return
+
 
         # largura disponível na scroll_area
         largura_disponivel = min(self.scroll_area.viewport().width() - 80, 900)  # 800px máximo
 
-        for pagina_id, widget in self.paginas_widgets.items():
-            label_pixmap = widget.findChild(QLabel)
-            if label_pixmap and hasattr(label_pixmap, "pixmap_original"):
-                pix_original = label_pixmap.pixmap_original
-                if pix_original is None:
-                    continue
+        for pagina_id, widget in self.gerar.paginas_widgets.items(): 
+            
+            # 1. Encontra o QLabel
+            label_pixmap = widget.findChild(QLabel) 
+            
+            # 2. Obtém o QPixmap ORIGINAL da fonte CORRETA (o dicionário do renderizador)
+            pix_original = self.gerar.pixmaps_originais.get(pagina_id) # <-- CORREÇÃO
+            
+            if label_pixmap is None or pix_original is None:
+                continue
 
                 # Redimensiona mantendo proporção do pixmap
-                pix_redim = pix_original.scaled(
-                    largura_disponivel,
-                    int(largura_disponivel * pix_original.height() / pix_original.width()), 
-                    Qt.AspectRatioMode.KeepAspectRatio,
-                    Qt.TransformationMode.SmoothTransformation
+            pix_redim = pix_original.scaled(
+                largura_disponivel,
+                int(largura_disponivel * pix_original.height() / pix_original.width()), 
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation
                 )
-                label_pixmap.setPixmap(pix_redim)
+            label_pixmap.setPixmap(pix_redim)
 
 
 

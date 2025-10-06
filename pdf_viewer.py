@@ -84,8 +84,10 @@ class RenderizadorPaginas:
 
     def _adicionar_pagina(self, nome_doc, idx, pagina_id, zoom):
         pagina_info = G.PAGINAS[pagina_id]
-       
-        doc = G.DOCUMENTOS[nome_doc]["doc"]   # <- aqui você pega o objeto fitz.Document
+        print(f"DEBUG: nome_doc = {nome_doc}")
+        print(f"DEBUG: Chaves em G.DOCUMENTOS = {G.DOCUMENTOS.keys()}")
+        doc = G.DOCUMENTOS[nome_doc]["doc"]  
+        print(pagina_info["pagina_num"]) # <- aqui você pega o objeto fitz.Document
         pagina = doc.load_page(pagina_info["pagina_num"])
         
         try:
@@ -112,7 +114,7 @@ class RenderizadorPaginas:
 
             btn_transferir = QPushButton("🔄")
             btn_transferir.setFixedSize(30,30)
-            btn_transferir.clicked.connect(lambda _, pid=pagina_id: self.logica.transferir_pagina(pid))
+            btn_transferir.clicked.connect(lambda _, pid=pagina_id: self.logica.mover_pagina_para_outro(pid))
             btn_layout.addWidget(btn_transferir)
 
             if idx > 0:
@@ -120,7 +122,7 @@ class RenderizadorPaginas:
                 btn_up.setFixedSize(30,30)
                 btn_up.clicked.connect(lambda _, d=nome_doc, i=idx: self.logica.mover_para_cima(d, i))
                 btn_layout.addWidget(btn_up)
-            if idx < len(self.logica.documentos[nome_doc]["paginas"])-1:
+            if idx < len(G.DOCUMENTOS[nome_doc]["paginas"])-1:
                 btn_down = QPushButton("⬇️")
                 btn_down.setFixedSize(30,30)
                 btn_down.clicked.connect(lambda _, d=nome_doc, i=idx: self.logica.mover_para_baixo(d, i))
@@ -170,7 +172,7 @@ class RenderizadorPaginas:
 
         btn_lista_mover = QPushButton("🔄")
         btn_lista_mover.setMaximumWidth(30)
-        btn_lista_mover.clicked.connect(lambda _, pid=pagina_id: self.logica.transferir_pagina(pid))
+        btn_lista_mover.clicked.connect(lambda _, pid=pagina_id: self.logica.mover_pagina_para_outro(pid,descricao))
         item_layout.addWidget(btn_lista_mover)
 
         item_widget.setLayout(item_layout)

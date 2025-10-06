@@ -15,22 +15,13 @@ import copy
 # }
 DOCUMENTOS = {}
 
-# Metadados de todas as páginas
-# Exemplo:
-# {
-#   "arquivo.pdf_p0": {
-#       "descricao": "arquivo.pdf - Página 1",
-#       "doc_original": "arquivo.pdf",
-#       "pagina_num": 0
-#   }
-# }
+
 PAGINAS = {}
 
-# Pilhas de histórico (para desfazer/refazer)
 HISTORICO = []
 FUTURO = []
 
-# Configurações gerais
+
 ZOOM_PADRAO = 1.0
 
 # ------------------------------

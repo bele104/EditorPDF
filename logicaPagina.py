@@ -11,8 +11,6 @@ class LogicaPagina(QObject):
     
     def __init__(self):
         super().__init__()
-        self.documentos = {}
-        self.paginas = {}
         self.conversor_temporarios=conversor()
         self.future = []
         
@@ -81,47 +79,47 @@ class LogicaPagina(QObject):
 
     def mover_para_cima(self, nome_doc, index):
         if index <= 0: return
-        self.salvar_estado()
-        paginas = self.documentos[nome_doc]["paginas"]
+        G.Historico.salvar_estado()
+        paginas = G.DOCUMENTOS[nome_doc]["paginas"]
         paginas[index - 1], paginas[index] = paginas[index], paginas[index - 1]
         self.documentos_atualizados.emit()
 
     def mover_para_baixo(self, nome_doc, index):
-        paginas = self.documentos[nome_doc]["paginas"]
+        paginas = G.DOCUMENTOS[nome_doc]["paginas"]
         if index >= len(paginas) - 1: return
-        self.salvar_estado()
+        G.Historico.salvar_estado()
         paginas[index + 1], paginas[index] = paginas[index], paginas[index + 1]
         self.documentos_atualizados.emit()
 
     def excluir_pagina(self, nome_doc, index):
-        paginas = self.documentos[nome_doc]["paginas"]
+        paginas = G.DOCUMENTOS[nome_doc]["paginas"]
         if 0 <= index < len(paginas):
             G.Historico.salvar_estado()# apenas aqui, antes de qualquer alteração
             paginas.pop(index)
             self.documentos_atualizados.emit()
 
     def mover_pagina_para_outro(self, pagina_id, destino):
-        origem = self.paginas[pagina_id]["doc_original"]
+        origem = G.PAGINAS[pagina_id]["doc_original"]
         if origem == destino:
             return
         G.Historico.salvar_estado()# apenas aqui, antes de qualquer alteração
-        self.documentos[origem]["paginas"].remove(pagina_id)
-        self.documentos[destino]["paginas"].append(pagina_id)
-        self.paginas[pagina_id]["doc_original"] = destino
+        G.DOCUMENTOS[origem]["paginas"].remove(pagina_id)
+        G.DOCUMENTOS[destino]["paginas"].append(pagina_id)
+        G.DOCUMENTOS[pagina_id]["doc_original"] = destino
         self.documentos_atualizados.emit()
 
     # ------------------------------
     # SALVAR DOCUMENTO
     # ------------------------------
 
-    def salvar_documento(self, janela, nome_doc):
+    def salvar_documento(janela, nome_doc):
         caminho, _ = QFileDialog.getSaveFileName(janela, f"Salvar {nome_doc}", "", "PDF Files (*.pdf)")
         if not caminho: return
         try:
             novo_doc = fitz.open()
-            for pid in self.documentos[nome_doc]["paginas"]:
-                pagina_info = self.paginas[pid]
-                doc_original = self.documentos[pagina_info["doc_original"]]["doc"]
+            for pid in G.DOCUMENTOS[nome_doc]["paginas"]:
+                pagina_info = G.PAGINAS[pid]
+                doc_original = G.DOCUMENTOS[pagina_info["doc_original"]]["doc"]
                 pagina = doc_original.load_page(pagina_info["pagina_num"])
                 novo_doc.insert_pdf(doc_original, from_page=pagina.number, to_page=pagina.number)
             novo_doc.save(caminho)
