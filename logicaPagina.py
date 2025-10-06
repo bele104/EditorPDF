@@ -112,20 +112,24 @@ class LogicaPagina(QObject):
             
             self.documentos_atualizados.emit()
 
+    # No arquivo logicaPagina.py, dentro da classe LogicaPagina
+
     def mover_pagina_para_outro(self, pagina_id, destino):
-        origem = G.PAGINAS[pagina_id]["doc_original"]
+        # 💥 CORREÇÃO: Acesso via G
+        origem = G.PAGINAS[pagina_id]["doc_original"] 
+        
         if origem == destino:
             return
-        G.Historico.salvar_estado()# apenas aqui, antes de qualquer alteração
+            
+        # 💥 CORREÇÃO: Acesso via G.Historico
+        G.Historico.salvar_estado() 
+        
+        # 💥 CORREÇÃO: Acesso via G
         G.DOCUMENTOS[origem]["paginas"].remove(pagina_id)
         G.DOCUMENTOS[destino]["paginas"].append(pagina_id)
-        G.PAGINAS[pagina_id]["doc_original"] = destino # Corrigindo a chave de acesso, deve ser G.PAGINAS[pagina_id]
-        
-        # 💥 ADIÇÃO DE PRINT
-        print(f"\n[AÇÃO] Página {pagina_id} movida de '{origem}' para '{destino}'.")
+        G.PAGINAS[pagina_id]["doc_original"] = destino
         
         self.documentos_atualizados.emit()
-
     # ------------------------------
     # SALVAR DOCUMENTO
     # ------------------------------

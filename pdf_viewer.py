@@ -1,5 +1,5 @@
 from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QListWidgetItem, QSizePolicy
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QListWidgetItem, QSizePolicy, QDialog, QComboBox, QMessageBox
 )
 from PyQt6.QtGui import QPixmap, QImage
 from PyQt6.QtCore import Qt
@@ -180,7 +180,9 @@ class RenderizadorPaginas:
 
         btn_lista_mover = QPushButton("🔄")
         btn_lista_mover.setMaximumWidth(30)
-        btn_lista_mover.clicked.connect(lambda _, pid=pagina_id: self.logica.mover_pagina_para_outro(pid,descricao))
+        # 💥 CORREÇÃO: Conecta ao novo método 'transferir_pagina'
+        btn_lista_mover.clicked.connect(lambda _, pid=pagina_id: self.transferir_pagina(pid)) 
+        item_layout.addWidget(btn_lista_mover)
         item_layout.addWidget(btn_lista_mover)
 
         item_widget.setLayout(item_layout)
@@ -189,3 +191,43 @@ class RenderizadorPaginas:
         self.lista_lateral.addItem(item_list)
         self.lista_lateral.setItemWidget(item_list, item_widget)
         item_list.setData(1000, pagina_id)
+
+
+        # No arquivo pdf_viewer.py, dentro da classe RenderizadorPaginas
+
+    
+
+    def transferir_pagina(self, pagina_id):
+        """
+        Abre um diálogo para o usuário selecionar o documento de destino
+        e chama a lógica para mover a página.
+        """
+        # 💥 CORREÇÃO: Acessa os dados globais G.PAGINAS e G.DOCUMENTOS
+        origem = G.PAGINAS[pagina_id]["doc_original"]
+        outros_docs = [n for n in G.DOCUMENTOS.keys() if n != origem]
+        
+        if not outros_docs:
+            QMessageBox.information(None, "Transferir Página", "Nenhum outro documento aberto para transferir.")
+            return
+
+        # O DIÁLOGO (QDialog)
+        # ⚠️ Certifique-se de que a classe RenderizadorPaginas herda de QWidget 
+        # ou QObject e tem uma referência à janela principal (self),
+        # ou use 'None' para o parent do QDialog.
+        dialog = QDialog(self.lista_lateral.window()) # Use a janela principal como parent
+        dialog.setWindowTitle("Selecionar documento destino")
+        layout = QVBoxLayout(dialog)
+        layout.addWidget(QLabel("Enviar página para:"))
+
+        combo = QComboBox()
+        combo.addItems(outros_docs)
+        layout.addWidget(combo)
+
+        btn_ok = QPushButton("OK")
+        btn_ok.clicked.connect(dialog.accept)
+        layout.addWidget(btn_ok)
+
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            destino = combo.currentText()
+            # 💥 CHAMADA FINAL: Agora a lógica recebe os dois argumentos
+            self.logica.mover_pagina_para_outro(pagina_id, destino)
