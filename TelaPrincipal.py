@@ -5,7 +5,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtGui import QPixmap, QImage, QKeySequence, QAction
 from PyQt6.QtCore import Qt
-from logicaPagina import LogicaPagina
+from logicaPagina import LogicaPagina as logica
 import fitz
 
 from pdf_viewer import RenderizadorPaginas
@@ -23,7 +23,7 @@ class PDFEditor(QMainWindow):
         # Lógica
         # ------------------------------
 
-        self.logica = LogicaPagina()
+        self.logica = logica()
 
         # ------------------------------
         # Painel esquerdo
@@ -63,7 +63,7 @@ class PDFEditor(QMainWindow):
         self.paginas_widgets = {}  # **agora garantido que existe**
 
 
-        self.gerar = RenderizadorPaginas(self.paginas_layout, self.lista_paginas)
+        self.gerar = RenderizadorPaginas(self.paginas_layout, self.lista_paginas,self.logica)
         
         # ------------------------------
         # Layout principal
@@ -80,8 +80,8 @@ class PDFEditor(QMainWindow):
         # ------------------------------
         self.btn_abrir.clicked.connect(self.abrir_pdf)
         self.btn_extrair.clicked.connect(self.mostrar_texto_pdf)
-        self.btn_desfazer.clicked.connect(G.Historico.desfazer)
-        self.btn_refazer.clicked.connect(G.Historico.refazer)
+        self.btn_desfazer.clicked.connect(self.desfazer_acao)
+        self.btn_refazer.clicked.connect(self.refazer_acao)
 
 
         # ------------------------------
@@ -89,13 +89,15 @@ class PDFEditor(QMainWindow):
         # ------------------------------
         desfazer_acao = QAction(self)
         desfazer_acao.setShortcut(QKeySequence("Ctrl+Z"))
-        desfazer_acao.triggered.connect(G.Historico.desfazer)
+        desfazer_acao.triggered.connect(self.desfazer_acao)
         self.addAction(desfazer_acao)
+
 
         refazer_acao = QAction(self)
         refazer_acao.setShortcut(QKeySequence("Ctrl+Alt+Z"))
-        refazer_acao.triggered.connect(G.Historico.refazer)
+        refazer_acao.triggered.connect(self.refazer_acao)
         self.addAction(refazer_acao)
+
 
     # ------------------------------
     # Abrir PDF
@@ -141,8 +143,8 @@ class PDFEditor(QMainWindow):
     # Transferir página
     # ------------------------------
     def transferir_pagina(self, pagina_id):
-        origem = self.logica.paginas[pagina_id]["doc_original"]
-        outros_docs = [n for n in self.logica.documentos if n != origem]
+        origem = G.PAGINAS[pagina_id]["doc_original"]
+        outros_docs = [n for n in G.DOCUMENTOS if n != origem]
         if not outros_docs:
             return
 
@@ -193,11 +195,11 @@ class PDFEditor(QMainWindow):
             self.btn_voltar.deleteLater()
 
         texto_total = ""
-        for pagina_id, pagina_info in self.logica.paginas.items():
+        for pagina_id, pagina_info in G.PAGINAS.items():
             nome_doc = pagina_info["doc_original"]
             descricao = pagina_info["descricao"]
             try:
-                doc = self.logica.documentos[nome_doc]["doc"]
+                doc = G.DOCUMENTOS[nome_doc]["doc"]
                 pagina = doc.load_page(pagina_info["pagina_num"])
                 texto = pagina.get_text("text")
             except Exception as e:
@@ -229,6 +231,20 @@ class PDFEditor(QMainWindow):
             self.btn_voltar = None
         self.scroll_area.show()
 
+    # ------------------------------
+    # Ações de Desfazer/Refazer
+    # ------------------------------
+    def desfazer_acao(self):
+        # 1. Executa a lógica de desfazer (muda G.DOCUMENTOS)
+        G.Historico.desfazer()
+        # 2. 💥 Força o redesenho da tela lendo os novos dados de G.DOCUMENTOS
+        self.gerar.renderizar_com_zoom_padrao() 
+
+    def refazer_acao(self):
+        # 1. Executa a lógica de refazer (muda G.DOCUMENTOS)
+        G.Historico.refazer()
+        # 2. 💥 Força o redesenho da tela lendo os novos dados de G.DOCUMENTOS
+        self.gerar.renderizar_com_zoom_padrao() 
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)

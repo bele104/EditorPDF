@@ -6,19 +6,27 @@ from PyQt6.QtCore import Qt
 import fitz
 import globais as G
 
-from logicaPagina import LogicaPagina as logica
 
 class RenderizadorPaginas:
 
 
 
 
-    def __init__(self,layout_central, lista_lateral):
-        self.logica = logica()
+    def __init__(self,layout_central, lista_lateral,logica):
+        self.logica = logica
         self.layout_central = layout_central
         self.lista_lateral = lista_lateral
         self.paginas_widgets = {}        # pagina_id -> widget
         self.pixmaps_originais = {}      # pagina_id -> QPixmap original
+        self.logica.documentos_atualizados.connect(self.renderizar_com_zoom_padrao) #fica any mesmo 
+    # ------------------------------
+    # NOVO MÉTODO (Obrigatório para o sistema de sinais e Undo/Redo)
+    # ------------------------------
+    def renderizar_com_zoom_padrao(self):
+        """Método chamado pelo sinal da lógica e pelas ações de desfazer/refazer para redesenhar a UI."""
+        print("oi")
+        self.renderizar_todas(G.ZOOM_PADRAO)
+
 
     def renderizar_todas(self, zoom=1.0):
         self.limpar_layout()
