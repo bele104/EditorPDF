@@ -35,7 +35,7 @@ class Historico:
                            for nome, dados in DOCUMENTOS.items()},
             "paginas": {pid: {"descricao": p["descricao"],
                               "doc_original": p["doc_original"],
-                              "pagina_num": p["pagina_num"]}
+                              "fitz_index": p["fitz_index"]}
                         for pid, p in PAGINAS.items()}
         }
         HISTORICO.append(estado)

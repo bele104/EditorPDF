@@ -34,7 +34,7 @@ class PDFEditor(QMainWindow):
         self.btn_refazer = QPushButton("Refazer (Ctrl+Alt+Z)")
 
         self.lista_paginas = QListWidget()
-        self.lista_paginas.itemClicked.connect(self.ir_para_pagina)
+        
         self.lista_paginas.setSizePolicy(QSizePolicy.Policy.MinimumExpanding, QSizePolicy.Policy.Expanding)
 
         # Layout esquerdo
@@ -63,7 +63,7 @@ class PDFEditor(QMainWindow):
         self.paginas_widgets = {}  # **agora garantido que existe**
 
 
-        self.gerar = RenderizadorPaginas(self.paginas_layout, self.lista_paginas,self.logica)
+        self.gerar = RenderizadorPaginas(self.paginas_layout, self.lista_paginas,self.logica,self.scroll_area)
         
         # ------------------------------
         # Layout principal
@@ -119,7 +119,7 @@ class PDFEditor(QMainWindow):
         for pagina_id, widget in self.gerar.paginas_widgets.items(): 
             
             # 1. Encontra o QLabel
-            label_pixmap = widget.findChild(QLabel) 
+            label_pixmap = widget.findChild(QLabel,"page_image_label") 
             
             # 2. Obtém o QPixmap ORIGINAL da fonte CORRETA (o dicionário do renderizador)
             pix_original = self.gerar.pixmaps_originais.get(pagina_id) # <-- CORREÇÃO
@@ -135,7 +135,13 @@ class PDFEditor(QMainWindow):
                 Qt.TransformationMode.SmoothTransformation
                 )
             label_pixmap.setPixmap(pix_redim)
-
+            # Opcional: Força o layout a atualizar para evitar sobreposição
+            label_pixmap.update()
+            widget.update()
+        
+        # Opcional: Força o layout principal a se reorganizar
+        self.paginas_layout.update()
+        self.paginas_widget.update()
 
 
 
@@ -163,18 +169,9 @@ class PDFEditor(QMainWindow):
 
         if dialog.exec():
             destino = combo.currentText()
-            self.logica.mover_pagina_para_outro(pagina_id, destino)
+            self.logica.moverPagina(pagina_id, destino)
 
-    # ------------------------------
-    # Ir para página
-    # ------------------------------
-    def ir_para_pagina(self, item):
-        pagina_id = item.data(1000)
-        if pagina_id is None:
-            return
-        widget = self.paginas_widgets.get(pagina_id)
-        if widget:
-            self.scroll_area.ensureWidgetVisible(widget)
+    
 
     # ------------------------------
     # Salvar documentos

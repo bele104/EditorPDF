@@ -5,19 +5,25 @@ from PyQt6.QtGui import QPixmap, QImage
 from PyQt6.QtCore import Qt
 import fitz
 import globais as G
-
+import os
+def abreviar_titulo(nome, limite=20):
+    if len(nome) > limite:
+        return nome[:limite - 3] + "..."
+    return nome
 
 class RenderizadorPaginas:
 
 
 
 
-    def __init__(self,layout_central, lista_lateral,logica):
+    def __init__(self,layout_central, lista_lateral,logica, scroll_area):
         self.logica = logica
         self.layout_central = layout_central
         self.lista_lateral = lista_lateral
         self.paginas_widgets = {}        # pagina_id -> widget
         self.pixmaps_originais = {}      # pagina_id -> QPixmap original
+        self.lista_lateral.itemClicked.connect(self.ir_para_pagina)
+        self.scroll_area = scroll_area  # <- referência à scroll area
         self.logica.documentos_atualizados.connect(self.renderizar_com_zoom_padrao) #fica any mesmo 
     # ------------------------------
     # NOVO MÉTODO (Obrigatório para o sistema de sinais e Undo/Redo)
@@ -39,14 +45,21 @@ class RenderizadorPaginas:
     # ------------------------------
     # Funções internas
     # ------------------------------
+    # Na classe RenderizadorPaginas
+
     def limpar_layout(self):
-        # Limpa layout central
-        for i in reversed(range(self.layout_central.count())):
-            widget = self.layout_central.itemAt(i).widget()
-            if widget:
+        # 1. Limpa layout central (onde as páginas são exibidas)
+        while self.layout_central.count():
+            item = self.layout_central.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
                 widget.setParent(None)
-        # Limpa lista lateral
+                widget.deleteLater()
+                
+        # 2. Limpa lista lateral
         self.lista_lateral.clear()
+        
+        # 3. Limpa caches internos (essencial!)
         self.paginas_widgets.clear()
         self.pixmaps_originais.clear()
 
@@ -62,8 +75,8 @@ class RenderizadorPaginas:
         header_layout = QHBoxLayout(header_widget)
         header_layout.setContentsMargins(2,2,2,2)
         header_layout.setSpacing(5)
-
-        lbl_doc = QLabel(f"📄 {nome_doc}")
+        nome,_=os.path.splitext(nome_doc)
+        lbl_doc = QLabel(f"📑{abreviar_titulo(nome,limite=20)}")
         lbl_doc.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         header_layout.addWidget(lbl_doc)
         header_layout.addStretch()
@@ -89,14 +102,33 @@ class RenderizadorPaginas:
         self.lista_lateral.addItem(header_item)
         self.lista_lateral.setItemWidget(header_item, header_widget)
         header_item.setFlags(Qt.ItemFlag.ItemIsEnabled)
+        # **Guarda informação de que é cabeçalho de documento**
+        header_item.setData(1000, {"tipo":"doc", "nome_doc": nome_doc})
+        header_item.setFlags(Qt.ItemFlag.ItemIsEnabled)
 
     def _adicionar_pagina(self, nome_doc, idx, pagina_id, zoom):
         pagina_info = G.PAGINAS[pagina_id]
-        print(f"DEBUG: nome_doc = {nome_doc}")
-        print(f"DEBUG: Chaves em G.DOCUMENTOS = {G.DOCUMENTOS.keys()}")
-        doc = G.DOCUMENTOS[nome_doc]["doc"]  
-        print(pagina_info["pagina_num"]) # <- aqui você pega o objeto fitz.Document
-        pagina = doc.load_page(pagina_info["pagina_num"])
+        # ----------------------------------------------------
+        # 💥 PRINTS DE DEBUG DA ORDEM E DA ORIGEM
+        # ----------------------------------------------------
+        if idx == 0:
+            print("\n--- INÍCIO DO DOCUMENTO ---")
+            print(f"DEBUG: Documento sendo processado (Destino/Lista de Ordem): {nome_doc}")
+            print(f"DEBUG: Lista de ordem atual: {G.DOCUMENTOS[nome_doc]['paginas']}")
+        
+        # 1. Qual é o documento REAL que contém o conteúdo desta página?
+        nome_doc_origem = pagina_info["doc_original"]
+        
+        # 2. Pega o objeto fitz.Document REAL usando o nome da origem.
+        doc_real = G.DOCUMENTOS[nome_doc_origem]["doc"]
+        
+        # 3. Carrega a página usando o objeto doc_real e o índice original.
+        pagina_num_origem = pagina_info["fitz_index"]
+        pagina = doc_real.load_page(pagina_num_origem)
+        
+        print(f"--> Carregando '{pagina_id}' (Lista Pág. {idx}): Conteúdo está em '{nome_doc_origem}' na Pág. {pagina_num_origem}")
+    
+    # ----------------------------------------------------
         
         try:
             pix = pagina.get_pixmap(matrix=fitz.Matrix(zoom, zoom))
@@ -110,8 +142,9 @@ class RenderizadorPaginas:
             page_layout.setSpacing(5)
 
             label_pixmap = QLabel()
-            label_pixmap.pixmap_original = pixmap
-            label_pixmap.setPixmap(pixmap)
+             # 💥 CORREÇÃO AQUI: Dê um nome específico para o QLabel que contém a imagem.
+            label_pixmap.setObjectName("page_image_label") 
+            label_pixmap.setPixmap(pixmap)       # <-- Define a imagem
             label_pixmap.setScaledContents(False)
             label_pixmap.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
             page_layout.addWidget(label_pixmap)
@@ -122,7 +155,7 @@ class RenderizadorPaginas:
 
             btn_transferir = QPushButton("🔄")
             btn_transferir.setFixedSize(30,30)
-            btn_transferir.clicked.connect(lambda _, pid=pagina_id: self.logica.mover_pagina_para_outro(pid))
+            btn_transferir.clicked.connect(lambda _, pid=pagina_id: self.transferir_pagina(pid))
             btn_layout.addWidget(btn_transferir)
 
             if idx > 0:
@@ -183,15 +216,15 @@ class RenderizadorPaginas:
         # 💥 CORREÇÃO: Conecta ao novo método 'transferir_pagina'
         btn_lista_mover.clicked.connect(lambda _, pid=pagina_id: self.transferir_pagina(pid)) 
         item_layout.addWidget(btn_lista_mover)
-        item_layout.addWidget(btn_lista_mover)
+        
 
         item_widget.setLayout(item_layout)
 
         item_list = QListWidgetItem()
         self.lista_lateral.addItem(item_list)
         self.lista_lateral.setItemWidget(item_list, item_widget)
-        item_list.setData(1000, pagina_id)
-
+         # **Guarda informação de que é página**
+        item_list.setData(1000, {"tipo":"pagina", "pagina_id": pagina_id})
 
         # No arquivo pdf_viewer.py, dentro da classe RenderizadorPaginas
 
@@ -230,4 +263,61 @@ class RenderizadorPaginas:
         if dialog.exec() == QDialog.DialogCode.Accepted:
             destino = combo.currentText()
             # 💥 CHAMADA FINAL: Agora a lógica recebe os dois argumentos
-            self.logica.mover_pagina_para_outro(pagina_id, destino)
+            self.logica.moverPagina(pagina_id, destino)
+    def ir_para_pagina(self, item):
+        data = item.data(1000)
+        if data is None:
+            return
+
+        if data["tipo"] == "pagina":
+            # Scroll direto e mostra apenas o documento desta página
+            pagina_id = data["pagina_id"]
+            doc_origem = G.PAGINAS[pagina_id]["doc_original"]
+
+            # Oculta todas as páginas que não pertencem ao mesmo documento
+            for pid, widget in self.paginas_widgets.items():
+                widget.setVisible(G.PAGINAS[pid]["doc_original"] == doc_origem)
+
+            # Scroll até a página
+            widget = self.paginas_widgets.get(pagina_id)
+            if widget:
+                self.scroll_area.ensureWidgetVisible(widget)
+
+        elif data["tipo"] == "doc":
+            # Scroll direto para a primeira página do documento e mostra apenas este documento
+            nome_doc = data["nome_doc"]
+
+            # Mostra somente páginas deste documento
+            for pid, widget in self.paginas_widgets.items():
+                widget.setVisible(G.PAGINAS[pid]["doc_original"] == nome_doc)
+
+            # Scroll para a primeira página visível
+            for pid, widget in self.paginas_widgets.items():
+                if widget.isVisible():
+                    self.scroll_area.ensureWidgetVisible(widget)
+                    break
+
+    def mostrar_pagina_unica(self, pagina_id):
+        """
+        Oculta todas as páginas e mostra apenas a página especificada.
+        """
+        for pid, widget in self.paginas_widgets.items():
+            widget.setVisible(pid == pagina_id)
+        
+        # Scroll para a página
+        widget = self.paginas_widgets.get(pagina_id)
+        if widget:
+            self.scroll_area.ensureWidgetVisible(widget)
+    def mostrar_paginas_documento(self, nome_doc):
+        """
+        Mostra apenas as páginas do documento 'nome_doc' e oculta as demais.
+        """
+        for pagina_id, widget in self.paginas_widgets.items():
+            doc_origem = G.PAGINAS[pagina_id]["doc_original"]
+            widget.setVisible(doc_origem == nome_doc)
+        
+        # Scroll para a primeira página do documento
+        for pagina_id, widget in self.paginas_widgets.items():
+            if widget.isVisible():
+                self.scroll_area.ensureWidgetVisible(widget)
+                break
