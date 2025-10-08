@@ -75,12 +75,14 @@ class RenderizadorPaginas:
         header_layout = QHBoxLayout(header_widget)
         header_layout.setContentsMargins(2,2,2,2)
         header_layout.setSpacing(5)
-        nome,_=os.path.splitext(nome_doc)
-        lbl_doc = QLabel(f"📑{abreviar_titulo(nome,limite=22)}")
+
+        nome,_ = os.path.splitext(nome_doc)
+        lbl_doc = QLabel(f"📑{abreviar_titulo(nome, limite=22)}")
         lbl_doc.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         header_layout.addWidget(lbl_doc)
         header_layout.addStretch()
 
+        # Botão Salvar
         btn_salvar = QPushButton("💾 Salvar")
         btn_salvar.setMaximumWidth(100)
         btn_salvar.setStyleSheet("""
@@ -97,14 +99,32 @@ class RenderizadorPaginas:
         btn_salvar.clicked.connect(lambda _, d=nome_doc: self.logica.salvar_documento_dialog(self.lista_lateral.window(), d))
         header_layout.addWidget(btn_salvar)
 
+        # Botão Apagar
+        btn_apagar = QPushButton("🗑️ Apagar")
+        btn_apagar.setMaximumWidth(100)
+        btn_apagar.setStyleSheet("""
+            QPushButton {
+                background-color: #f44336; 
+                color: white; 
+                border-radius: 5px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #da190b;
+            }
+        """)
+        btn_apagar.clicked.connect(lambda _, d=nome_doc: self.logica.excluir_documento(self.lista_lateral.window(), d))
+        header_layout.addWidget(btn_apagar)
+
+        # Adiciona à lista lateral
         header_item = QListWidgetItem()
         header_item.setSizeHint(header_widget.sizeHint())
         self.lista_lateral.addItem(header_item)
         self.lista_lateral.setItemWidget(header_item, header_widget)
         header_item.setFlags(Qt.ItemFlag.ItemIsEnabled)
-        # **Guarda informação de que é cabeçalho de documento**
+        # Guarda informação de que é cabeçalho de documento
         header_item.setData(1000, {"tipo":"doc", "nome_doc": nome_doc})
-        header_item.setFlags(Qt.ItemFlag.ItemIsEnabled)
+
 
     def _adicionar_pagina(self, nome_doc, idx, pagina_id, zoom):
         pagina_info = G.PAGINAS[pagina_id]
@@ -326,7 +346,7 @@ class RenderizadorPaginas:
 
 
 
-            
+
     def _mover_e_atualizar(self, nome_doc, idx, direcao):
         if direcao == "cima":
             self.logica.mover_para_cima(nome_doc, idx)

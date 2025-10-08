@@ -27,14 +27,7 @@ class LogicaPagina(QObject):
     # ------------------------------
 
     
-    def abrir_documento(self, janela):
-        filtros = "Arquivos suportados (*.pdf *.doc *.docx *.xls *.xlsx *.txt *.html *.jpg *.jpeg *.png)"
-        caminho_origem, _ = QFileDialog.getOpenFileName(janela, "Abrir Aquivo", "", filtros)
-        if not caminho_origem:
-            return False
-        
-        # ex: "meuarquivo.pdf"
-        # Converte o arquivo para PDF temporário, se necessário
+    def abrir_documento(self, caminho_origem):
         caminho = self.conversor_temporarios.processar_arquivo(caminho_origem)
         if not caminho:
             return False
@@ -125,7 +118,43 @@ class LogicaPagina(QObject):
             
             self.documentos_atualizados.emit()
 
-    # No arquivo logicaPagina.py, dentro da classe LogicaPagina
+
+    def excluir_documento(self, janela, nome_doc, apagar_sem_pergunta=False):
+        """
+        Exclui o documento da memória e da lista.
+        Se apagar_sem_pergunta=False, pergunta ao usuário se quer salvar antes.
+        """
+        if nome_doc not in G.DOCUMENTOS:
+            QMessageBox.warning(janela, "Erro", "Documento não encontrado!")
+            return
+
+        # Pergunta apenas se não for apagar depois de salvar
+        if not apagar_sem_pergunta:
+            resposta = QMessageBox.question(
+                janela,
+                "Excluir Documento",
+                f"Deseja salvar o documento '{nome_doc}' antes de apagar?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No | QMessageBox.StandardButton.Cancel
+            )
+            if resposta == QMessageBox.StandardButton.Cancel:
+                return
+            elif resposta == QMessageBox.StandardButton.Yes:
+                self.salvar_documento_dialog(janela, nome_doc)
+
+        # Remove páginas do documento
+        ids_paginas = G.DOCUMENTOS[nome_doc]["paginas"]
+        for pid in ids_paginas:
+            if pid in G.PAGINAS:
+                del G.PAGINAS[pid]
+
+        # Remove o documento
+        del G.DOCUMENTOS[nome_doc]
+
+        # Atualiza histórico e sinal
+        G.Historico.salvar_estado()
+        self.documentos_atualizados.emit()
+        print(f"[AÇÃO] Documento '{nome_doc}' excluído com sucesso.")
+
 
     def moverPagina(self, pagina_id, destino):
         origem = G.PAGINAS[pagina_id]["doc_original"]
@@ -221,6 +250,8 @@ class LogicaPagina(QObject):
 
             if sucesso:
                 QMessageBox.information(dialog, "Sucesso", f"Arquivo salvo com sucesso como {escolha}!")
+                self.excluir_documento(janela, nome_doc, apagar_sem_pergunta=True)
+
             else:
                 QMessageBox.critical(dialog, "Erro", f"Falha ao salvar como {escolha}.")
 

@@ -5,6 +5,8 @@ import copy
 # Variáveis globais do editor PDF
 # --------------------------------
 
+
+
 # Dicionário com todos os documentos abertos
 # Exemplo:
 # {
