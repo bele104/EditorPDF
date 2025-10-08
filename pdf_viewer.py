@@ -6,7 +6,7 @@ from PyQt6.QtCore import Qt
 import fitz
 import globais as G
 import os
-def abreviar_titulo(nome, limite=20):
+def abreviar_titulo(nome, limite=22):
     if len(nome) > limite:
         return nome[:limite - 3] + "..."
     return nome
@@ -76,7 +76,7 @@ class RenderizadorPaginas:
         header_layout.setContentsMargins(2,2,2,2)
         header_layout.setSpacing(5)
         nome,_=os.path.splitext(nome_doc)
-        lbl_doc = QLabel(f"📑{abreviar_titulo(nome,limite=20)}")
+        lbl_doc = QLabel(f"📑{abreviar_titulo(nome,limite=22)}")
         lbl_doc.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         header_layout.addWidget(lbl_doc)
         header_layout.addStretch()
@@ -94,7 +94,7 @@ class RenderizadorPaginas:
                 background-color: #45a049;
             }
         """)
-        btn_salvar.clicked.connect(lambda _, d=nome_doc: self.logica.salvar_documento(d))
+        btn_salvar.clicked.connect(lambda _, d=nome_doc: self.logica.salvar_documento_dialog(self.lista_lateral.window(), d))
         header_layout.addWidget(btn_salvar)
 
         header_item = QListWidgetItem()
@@ -262,8 +262,9 @@ class RenderizadorPaginas:
 
         if dialog.exec() == QDialog.DialogCode.Accepted:
             destino = combo.currentText()
-            # 💥 CHAMADA FINAL: Agora a lógica recebe os dois argumentos
             self.logica.moverPagina(pagina_id, destino)
+            self.renderizar_com_zoom_padrao()
+            self.lista_lateral.window().atualizar_tamanho_paginas()
     def ir_para_pagina(self, item):
         data = item.data(1000)
         if data is None:
@@ -321,3 +322,24 @@ class RenderizadorPaginas:
             if widget.isVisible():
                 self.scroll_area.ensureWidgetVisible(widget)
                 break
+
+
+
+
+            
+    def _mover_e_atualizar(self, nome_doc, idx, direcao):
+        if direcao == "cima":
+            self.logica.mover_para_cima(nome_doc, idx)
+        else:
+            self.logica.mover_para_baixo(nome_doc, idx)
+
+        # força renderizar novamente (já faz isso pelo sinal normalmente)
+        self.renderizar_com_zoom_padrao()
+
+        # chama o redimensionamento da janela principal
+        self.lista_lateral.window().atualizar_tamanho_paginas()
+
+    def _excluir_e_atualizar(self, nome_doc, idx):
+        self.logica.excluir_pagina(nome_doc, idx)
+        self.renderizar_com_zoom_padrao()
+        self.lista_lateral.window().atualizar_tamanho_paginas()

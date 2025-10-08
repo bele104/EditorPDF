@@ -105,45 +105,43 @@ class PDFEditor(QMainWindow):
     def abrir_pdf(self):
         self.logica.abrir_documento(self)
         self.gerar.renderizar_todas(G.ZOOM_PADRAO)  # passa apenas o zoom se quiser
+        self.resize(self.width()+1, self.height())  # força evento
+        self.resize(self.width()-1, self.height())  # volta ao tamanho original
+
+
 
 
     #DEIXA A IMAGEM NO TAMANHO CERTO
+
     def resizeEvent(self, event):
         super().resizeEvent(event)
+        self.atualizar_tamanho_paginas()
 
 
-
-        # largura disponível na scroll_area
-        largura_disponivel = min(self.scroll_area.viewport().width() - 80, 900)  # 800px máximo
+    def atualizar_tamanho_paginas(self):
+        largura_disponivel = min(self.scroll_area.viewport().width() - 80, 900)
 
         for pagina_id, widget in self.gerar.paginas_widgets.items(): 
-            
-            # 1. Encontra o QLabel
-            label_pixmap = widget.findChild(QLabel,"page_image_label") 
-            
-            # 2. Obtém o QPixmap ORIGINAL da fonte CORRETA (o dicionário do renderizador)
-            pix_original = self.gerar.pixmaps_originais.get(pagina_id) # <-- CORREÇÃO
-            
+            label_pixmap = widget.findChild(QLabel, "page_image_label") 
+            pix_original = self.gerar.pixmaps_originais.get(pagina_id)
             if label_pixmap is None or pix_original is None:
                 continue
 
-                # Redimensiona mantendo proporção do pixmap
             pix_redim = pix_original.scaled(
                 largura_disponivel,
                 int(largura_disponivel * pix_original.height() / pix_original.width()), 
                 Qt.AspectRatioMode.KeepAspectRatio,
                 Qt.TransformationMode.SmoothTransformation
-                )
+            )
             label_pixmap.setPixmap(pix_redim)
-            # Opcional: Força o layout a atualizar para evitar sobreposição
             label_pixmap.update()
             widget.update()
-        
-        # Opcional: Força o layout principal a se reorganizar
+
         self.paginas_layout.update()
         self.paginas_widget.update()
 
-
+  
+    
 
     # ------------------------------
     # Transferir página
@@ -178,7 +176,7 @@ class PDFEditor(QMainWindow):
     # ------------------------------
     def salvar_pdf_documento(self, nome_doc):
         self.logica.salvar_documento(self, nome_doc)
-
+        self.atualizar_tamanho_paginas
 
     # ------------------------------
     # Extrair texto
@@ -227,7 +225,7 @@ class PDFEditor(QMainWindow):
             self.btn_voltar.deleteLater()
             self.btn_voltar = None
         self.scroll_area.show()
-
+        self.atualizar_tamanho_paginas
     # ------------------------------
     # Ações de Desfazer/Refazer
     # ------------------------------
@@ -236,12 +234,14 @@ class PDFEditor(QMainWindow):
         G.Historico.desfazer()
         # 2. 💥 Força o redesenho da tela lendo os novos dados de G.DOCUMENTOS
         self.gerar.renderizar_com_zoom_padrao() 
+        self.atualizar_tamanho_paginas
 
     def refazer_acao(self):
         # 1. Executa a lógica de refazer (muda G.DOCUMENTOS)
         G.Historico.refazer()
         # 2. 💥 Força o redesenho da tela lendo os novos dados de G.DOCUMENTOS
         self.gerar.renderizar_com_zoom_padrao() 
+        self.atualizar_tamanho_paginas
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)

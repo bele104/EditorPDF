@@ -18,6 +18,7 @@ class Geradora:
             doc_original = fitz.open(self.caminho_pdf)
             novo_doc = fitz.open()
             for i in self.ordem_paginas:
+              
                 novo_doc.insert_pdf(doc_original, from_page=i, to_page=i)
             novo_doc.save(caminho_salvar)
             novo_doc.close()

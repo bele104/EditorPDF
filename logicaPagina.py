@@ -6,9 +6,11 @@ from PyQt6.QtWidgets import QFileDialog, QMessageBox
 from PyQt6.QtCore import QObject, pyqtSignal
 import globais as G 
 from conversor import ConversorArquivo as conversor
+from PyQt6.QtWidgets import QDialog, QVBoxLayout, QLabel, QComboBox, QPushButton, QFileDialog, QMessageBox
+from conversor import ConversorArquivo as conversor  # importe a classe que você escreveu
+from geradorDocumentos import Geradora
 
-
-def abreviar_nome(nome, limite=15):
+def abreviar_nome(nome, limite=20):
     if len(nome) > limite:
         return nome[:limite - 3] + "..."
     return nome
@@ -41,11 +43,11 @@ class LogicaPagina(QObject):
             nome_doc = os.path.basename(caminho_origem)
             nome, _ = os.path.splitext(nome_doc)
             # 🔸 Abrevia se for muito longo
-            nome_doc_abreviado = f"📄{abreviar_nome(nome, limite=12)}"
+            nome_doc_abreviado = f"📄{abreviar_nome(nome, limite=20)}"
    
             
            
-            G.DOCUMENTOS[nome_doc] = {"doc": doc, "paginas": []}
+            G.DOCUMENTOS[nome_doc] = {"doc": doc, "paginas": [],"path":caminho}
 
             print(f"\n[AÇÃO] Documento aberto: { nome_doc_abreviado}") # ⬅️ ADIÇÃO DE PRINT
             
@@ -167,30 +169,64 @@ class LogicaPagina(QObject):
     # ------------------------------
 
     # Na classe LogicaPagina
-    def salvar_documento(self, janela, nome_doc):
-        caminho, _ = QFileDialog.getSaveFileName(janela, f"Salvar {nome_doc}", "", "PDF Files (*.pdf)")
-        if not caminho: return
-        try:
-            novo_doc = fitz.open()
-            # Itera sobre a ordem de exibição ATUAL
-            for pid in G.DOCUMENTOS[nome_doc]["paginas"]:
-                pagina_info = G.PAGINAS[pid]
-                
-                # Acessa o objeto PyMuPDF original (imutável)
-                doc_original = G.DOCUMENTOS[pagina_info["doc_original"]]["doc"]
-                
-                # 💥 Acessa o índice IMUTÁVEL do PyMuPDF
-                fitz_index = pagina_info["fitz_index"] 
-                
-                # Carrega a página original (o PyMuPDF precisa deste índice para buscar o conteúdo)
-                pagina = doc_original.load_page(fitz_index)
-                
-                # Insere no novo documento (o número da página no novo doc será sequencial)
-                novo_doc.insert_pdf(doc_original, from_page=pagina.number, to_page=pagina.number)
-                
-            novo_doc.save(caminho)
-            
-            print(f"\n[AÇÃO] Documento '{nome_doc}' salvo com sucesso em: {caminho}")
-            
-        except Exception as e:
-            QMessageBox.critical(janela, "Erro", f"Erro ao salvar PDF: {e}")
+    def salvar_documento_dialog(self, janela, nome_doc):
+        """
+        Mostra um diálogo para escolher o formato e salvar o documento.
+        """
+        if nome_doc not in G.DOCUMENTOS:
+            QMessageBox.warning(janela, "Erro", "Documento não encontrado!")
+            return
+
+        caminho_pdf = G.DOCUMENTOS[nome_doc]["path"]
+       # pega os IDs das páginas do documento
+        ids_paginas = G.DOCUMENTOS[nome_doc]["paginas"]
+        # converte para índices reais dentro do PDF
+        ordem_paginas = [G.PAGINAS[pid]["fitz_index"] for pid in ids_paginas]
+
+
+        dialog = QDialog(janela)
+        dialog.setWindowTitle("Salvar Documento")
+        layout = QVBoxLayout(dialog)
+        layout.addWidget(QLabel("Escolha o formato para salvar:"))
+
+        combo = QComboBox()
+        combo.addItems(["PDF", "Imagem (PNG)", "DOCX", "TXT"])
+        layout.addWidget(combo)
+
+        btn_ok = QPushButton("Salvar")
+        layout.addWidget(btn_ok)
+
+        def salvar():
+            escolha = combo.currentText()
+            geradora = Geradora(caminho_pdf, ordem_paginas, parent=dialog)
+
+
+            sucesso = False
+            if escolha == "PDF":
+                caminho, _ = QFileDialog.getSaveFileName(dialog, "Salvar como PDF", "", "PDF Files (*.pdf)")
+                if caminho:
+                    sucesso = geradora.salvar_como_pdf(caminho)
+            elif escolha == "Imagem (PNG)":
+                caminho_base, _ = QFileDialog.getSaveFileName(dialog, "Salvar como Imagem", "", "PNG Files (*.png)")
+                if caminho_base:
+                    sucesso = geradora.salvar_como_imagem(caminho_base, formato="PNG")
+            elif escolha == "DOCX":
+                caminho, _ = QFileDialog.getSaveFileName(dialog, "Salvar como DOCX", "", "Word Files (*.docx)")
+                if caminho:
+                    sucesso = geradora.salvar_como_docx(caminho)
+            elif escolha == "TXT":
+                caminho, _ = QFileDialog.getSaveFileName(dialog, "Salvar como TXT", "", "Text Files (*.txt)")
+                if caminho:
+                    sucesso = geradora.salvar_como_txt(caminho)
+
+            if sucesso:
+                QMessageBox.information(dialog, "Sucesso", f"Arquivo salvo com sucesso como {escolha}!")
+            else:
+                QMessageBox.critical(dialog, "Erro", f"Falha ao salvar como {escolha}.")
+
+            dialog.accept()
+
+        btn_ok.clicked.connect(salvar)
+        dialog.exec()
+
+        
