@@ -16,7 +16,7 @@ import globais as G
 class PDFEditor(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("PoDe Fazer café? (PDF)")
+        self.setWindowTitle("Serena LOVE PDF")
         self.setGeometry(100, 100, 1000, 700)
         self.setAcceptDrops(True)  # Permite arrastar arquivos para a janela inteira
 
@@ -156,7 +156,7 @@ class PDFEditor(QMainWindow):
         if event.mimeData().hasUrls():
             # Só aceita arquivos PDF
             urls = event.mimeData().urls()
-            if all(url.toLocalFile().lower().endswith(('.pdf', '.docx', '.doc', '.txt', '.png', '.jpg', '.jpeg', '.xlsx', '.xls','.html')) for url in urls):
+            if all(url.toLocalFile().lower().endswith(('.pdf', '.docx', '.doc', '.txt', '.png', '.jpg', '.jpeg','.html')) for url in urls):
                 event.acceptProposedAction()
             else:
                 event.ignore()
@@ -189,8 +189,6 @@ class PDFEditor(QMainWindow):
             self.atualizar_tamanho_paginas()
 
 
-
-
     #DEIXA A IMAGEM NO TAMANHO CERTO
 
     def resizeEvent(self, event):
@@ -220,8 +218,6 @@ class PDFEditor(QMainWindow):
         self.paginas_layout.update()
         self.paginas_widget.update()
 
-  
-    
 
     # ------------------------------
     # Transferir página

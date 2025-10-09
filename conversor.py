@@ -26,8 +26,6 @@ class ConversorArquivo:
             '.jpg': 'Imagem (JPG)',
             '.jpeg': 'Imagem (JPEG)',
             '.png': 'Imagem (PNG)',
-            '.xls': 'Excel (XLS)',
-            '.xlsx': 'Excel (XLSX)',
             '.txt': 'Texto (TXT)',
             '.html': 'HTML',
             
@@ -48,24 +46,7 @@ class ConversorArquivo:
         print(f"✅ PDF gerado: {caminho_pdf}")
         return caminho_pdf
 
-    def transformarExcel(self, caminho_excel):
-        """
-        Converte planilhas Excel para PDF, transformando em uma tabela visual.
-        """
-        print(f"🔄 Convertendo Excel para PDF: {caminho_excel}")
-        df = pd.read_excel(caminho_excel)
-        fig, ax = plt.subplots(figsize=(8.27, 11.69))  # tamanho A4
-        ax.axis('off')  # desativa eixos
-        tabela = ax.table(cellText=df.values, colLabels=df.columns, loc='center')
-        tabela.auto_set_font_size(False)
-        tabela.set_fontsize(8)
-        tabela.scale(1.2, 1.2)
-        caminho_pdf = self.gerar_caminho_pdf(caminho_excel)
-        plt.savefig(caminho_pdf, bbox_inches='tight')
-        plt.close(fig)
-        print(f"✅ PDF gerado: {caminho_pdf}")
-        return caminho_pdf
-
+    
     def transformarHtml(self, caminho_html, caminho_wkhtmltopdf=r'C:\Program Files\wkhtmltopdf\bin\wkhtmltopdf.exe'):
         """
         Converte arquivos HTML para PDF usando wkhtmltopdf.
@@ -153,9 +134,6 @@ class ConversorArquivo:
                 shutil.copy(caminho_arquivo, caminho_pdf_temp)
             elif tipo in ["Word (DOCX)", "Word (DOC)"]:
                 caminho_real = self.transformarDoc(caminho_arquivo)
-                shutil.copy(caminho_real, caminho_pdf_temp)
-            elif tipo in ["Excel (XLSX)", "Excel (XLS)"]:
-                caminho_real = self.transformarExcel(caminho_arquivo)
                 shutil.copy(caminho_real, caminho_pdf_temp)
             elif tipo == "HTML":
                 caminho_real = self.transformarHtml(caminho_arquivo)

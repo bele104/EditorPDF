@@ -27,7 +27,7 @@ class LogicaPagina(QObject):
     # ------------------------------
 
     
-    def abrir_documento(self, caminho_origem):
+    def abrir_documento(self, caminho_origem,janela=None):
         caminho = self.conversor_temporarios.processar_arquivo(caminho_origem)
         if not caminho:
             return False
@@ -71,7 +71,10 @@ class LogicaPagina(QObject):
             
             return True
         except Exception as e:
-            QMessageBox.critical(janela, "Erro", f"Erro ao abrir PDF: {e}")
+            if janela:
+                QMessageBox.critical(janela, "Erro", f"Erro ao abrir PDF: {e}")
+            else:
+                QMessageBox.critical(None, "Erro", f"Erro ao abrir PDF: {e}")
             return False
 
 

@@ -1,5 +1,7 @@
 import fitz  # PyMuPDF
 from docx import Document
+import re
+import html
 
 class Geradora:
     def __init__(self, caminho_pdf, ordem_paginas, parent=None):
@@ -46,6 +48,16 @@ class Geradora:
             print(f"Erro ao salvar imagens: {e}")
             return False
 
+
+    def limpar_texto_html(self, texto):
+
+        # Converte entidades HTML em caracteres legíveis
+        texto = html.unescape(texto)
+    # Remove caracteres não XML (Unicode válido)
+    # Permitimos caracteres de espaço, letras, números e sinais de pontuação
+    # Remove caracteres nulos e de controle
+        return re.sub(r'[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]', '', texto)
+
     def salvar_como_docx(self, caminho_docx):
         """Salva o PDF como arquivo Word (DOCX)"""
         try:
@@ -54,6 +66,7 @@ class Geradora:
 
             for i, pagina in enumerate(self.ordem_paginas):
                 texto = doc_pdf.load_page(pagina).get_text("text")
+                texto = self.limpar_texto_html(texto)  # Limpa caracteres inválidos
                 documento.add_paragraph(texto)
                 documento.add_page_break()
 
