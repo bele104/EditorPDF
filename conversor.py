@@ -38,13 +38,26 @@ class ConversorArquivo:
 
     def transformarDoc(self, caminho_arquivo):
         """
-        Converte arquivos Word (.doc ou .docx) para PDF.
+        Converte arquivos Word (.doc ou .docx) para PDF usando Word via docx2pdf.
         """
-        print(f"🔄 Convertendo Word para PDF: {caminho_arquivo}")
-        convert(caminho_arquivo)
-        caminho_pdf = self.gerar_caminho_pdf(caminho_arquivo)
-        print(f"✅ PDF gerado: {caminho_pdf}")
-        return caminho_pdf
+        try:
+            print(f"🔄 Convertendo Word para PDF: {caminho_arquivo}")
+
+            # Gera caminho de saída para o PDF
+            caminho_pdf = self.gerar_caminho_pdf(caminho_arquivo)
+
+            # Converte diretamente para o caminho do PDF desejado
+            convert(caminho_arquivo, caminho_pdf)
+            print(f"✅ PDF gerado: {caminho_pdf}")
+            return caminho_pdf
+
+        except Exception as e:
+            print(f"❌ Erro ao converter DOC/DOCX: {e}")
+            return None
+
+        finally:
+            # Força o fechamento de processos do Word (caso tenham ficado abertos)
+            os.system("taskkill /f /im WINWORD.EXE >nul 2>&1")
 
     
     def transformarHtml(self, caminho_html, caminho_wkhtmltopdf=r'C:\Program Files\wkhtmltopdf\bin\wkhtmltopdf.exe'):
