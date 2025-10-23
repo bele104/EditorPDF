@@ -5,16 +5,6 @@ import copy
 # Variáveis globais do editor PDF
 # --------------------------------
 
-
-
-# Dicionário com todos os documentos abertos
-# Exemplo:
-# {
-#   "arquivo.pdf": {
-#       "doc": <fitz.Document>,
-#       "paginas": ["arquivo.pdf_p0", "arquivo.pdf_p1", ...]
-#   }
-# }
 DOCUMENTOS = {}
 
 

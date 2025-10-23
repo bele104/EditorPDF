@@ -1,10 +1,11 @@
 import sys
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QVBoxLayout, QHBoxLayout, QWidget, QPushButton,
-    QListWidget, QListWidgetItem, QLabel, QScrollArea, QTextEdit, QDialog, QComboBox,QSizePolicy,QFrame, QVBoxLayout, QHBoxLayout, QPushButton,  QMessageBox,QFileDialog
+    QListWidget, QListWidgetItem, QLabel, QScrollArea, QTextEdit, QDialog, QComboBox,QSizePolicy,QFrame, 
+    QVBoxLayout, QHBoxLayout, QPushButton,  QMessageBox,QFileDialog,QSplitter
 )
 from PyQt6.QtGui import QPixmap, QImage, QKeySequence, QAction
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt,QTimer
 from logicaPagina import LogicaPagina as logica
 import fitz
 
@@ -12,10 +13,16 @@ from pdf_viewer import RenderizadorPaginas
 
 import globais as G
 
+from pdf_viewer import ArrastarScrollFilter as arrastar
+import warnings
+
+
 
 class PDFEditor(QMainWindow):
     def __init__(self):
+        
         super().__init__()
+
         self.setWindowTitle("Serena LOVE PDF")
         self.setGeometry(100, 100, 1000, 700)
         self.setAcceptDrops(True)  # Permite arrastar arquivos para a janela inteira
@@ -26,36 +33,59 @@ class PDFEditor(QMainWindow):
         self.logica = logica()
 
         # ------------------------------
-        # Botões de cabeçalho fixo acima do PDF (direita)
+        # Botões de cabeçalho fixo acima do PDF
         # ------------------------------
         self.cabecalho_widget = QWidget()
         cabecalho_layout = QVBoxLayout(self.cabecalho_widget)
         cabecalho_layout.setContentsMargins(5, 5, 5, 5)
         cabecalho_layout.setSpacing(5)
-        
-        # Linha 1: Desfazer e Refazer centralizados
+
+        # Linha 1: Desfazer e Refazer (esquerda)
         linha_atalhos = QHBoxLayout()
-        linha_atalhos.addStretch()
-        
         self.btn_desfazer_top = QPushButton("↩︎")
+        self.btn_desfazer_top.setFixedSize(30, 20)
         self.btn_desfazer_top.clicked.connect(self.desfazer_acao)
-        linha_atalhos.addWidget(self.btn_desfazer_top)
-        
+
         self.btn_refazer_top = QPushButton("↪︎")
+        self.btn_refazer_top.setFixedSize(30, 20)
         self.btn_refazer_top.clicked.connect(self.refazer_acao)
+
+        linha_atalhos.addWidget(self.btn_desfazer_top)
         linha_atalhos.addWidget(self.btn_refazer_top)
-        
-        linha_atalhos.addStretch()
+        linha_atalhos.addStretch()  # empurra para a esquerda
         cabecalho_layout.addLayout(linha_atalhos)
+
         
-        # Linha 2: Botão de extrair texto centralizado
-        linha_extrair = QHBoxLayout()
-        linha_extrair.addStretch()
-        self.btn_extrair_top = QPushButton("✏️")
-        self.btn_extrair_top.clicked.connect(self.mostrar_texto_pdf)
-        linha_extrair.addWidget(self.btn_extrair_top)
-        linha_extrair.addStretch()
-        cabecalho_layout.addLayout(linha_extrair)
+
+        # Linha 3: Zoom centralizado
+        linha_zoom = QHBoxLayout()
+        linha_zoom.addStretch()
+        self.btn_zoom_menos = QPushButton("➖")
+        self.btn_zoom_mais = QPushButton("➕")
+        self.btn_zoom_reset =QPushButton("100%")
+        for btn in [self.btn_zoom_menos, self.btn_zoom_mais,self.btn_zoom_reset]:
+            btn.setFixedSize(30, 30)
+            btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #f0f0f0;
+                    border-radius: 4px;
+                }
+                QPushButton:hover {
+                    background-color: #dcdcdc;
+                }
+            """)
+
+        self.btn_zoom_menos.clicked.connect(lambda: self.gerar.ajustar_zoom(-0.1))
+        self.btn_zoom_mais.clicked.connect(lambda: self.gerar.ajustar_zoom(+0.1))
+        self.btn_zoom_reset.clicked.connect(lambda: self.gerar.definir_zoom(1.0))
+
+
+        linha_zoom.addWidget(self.btn_zoom_menos)
+        linha_zoom.addWidget(self.btn_zoom_reset)
+        linha_zoom.addWidget(self.btn_zoom_mais)
+        linha_zoom.addStretch()
+        cabecalho_layout.addLayout(linha_zoom)
+
 
         # ------------------------------
         # Painel esquerdo
@@ -90,6 +120,12 @@ class PDFEditor(QMainWindow):
         self.gerar = RenderizadorPaginas(self.paginas_layout, self.lista_paginas, self.logica, self.scroll_area)
 
         # ------------------------------
+
+        # Filtro de arrastar
+        # ------------------------------
+        self.filtro_arrastar = arrastar(self.scroll_area)
+        self.scroll_area.viewport().installEventFilter(self.filtro_arrastar)
+        # ------------------------------
         # Layout principal (horizontal)
         # ------------------------------
         layout_central = QVBoxLayout()
@@ -98,9 +134,27 @@ class PDFEditor(QMainWindow):
         central_widget = QWidget()
         central_widget.setLayout(layout_central)
 
-        layout_principal = QHBoxLayout()
-        layout_principal.addLayout(layout_esquerda, 1)
-        layout_principal.addWidget(central_widget, 4)
+        # ------------------------------
+        # Layout da lateral esquerda (já criado antes)
+        # ------------------------------
+        lado_esquerdo = QWidget()
+        lado_esquerdo.setLayout(layout_esquerda)
+        # ------------------------------
+        # Splitter horizontal (arrastar para esconder a lista lateral)
+        # ------------------------------
+        self.splitter = QSplitter(Qt.Orientation.Horizontal)
+        self.splitter.addWidget(lado_esquerdo)
+        self.splitter.addWidget(central_widget)
+        # Define o tamanho relativo inicial
+        # Define o tamanho relativo inicial
+        self.splitter.setStretchFactor(0, 0)
+        self.splitter.setStretchFactor(1, 1)
+
+        # ------------------------------
+        # Container principal
+        # ------------------------------
+        layout_principal = QVBoxLayout()
+        layout_principal.addWidget(self.splitter)
 
         container = QWidget()
         container.setLayout(layout_principal)
@@ -118,11 +172,64 @@ class PDFEditor(QMainWindow):
         refazer_acao.setShortcut(QKeySequence("Ctrl+Alt+Z"))
         refazer_acao.triggered.connect(self.refazer_acao)
         self.addAction(refazer_acao)
+        # ------------------------------
+        # Botão "mostrar painel" (fica visível quando o painel lateral é fechado)
+        # ------------------------------
+        self.btn_mostrar_painel = QPushButton("📂")
+        self.btn_mostrar_painel.setFixedSize(20, 100)
+        self.btn_mostrar_painel.setVisible(False)
+        self.btn_mostrar_painel.setStyleSheet("""
+            QPushButton {
+                border-radius: 8px;
+                background-color: #ececec;
+                font-size: 18px;
+            }
+            QPushButton:hover {
+                background-color: #d6d6d6;
+            }
+        """)
+        self.btn_mostrar_painel.clicked.connect(lambda: self.splitter.setSizes([200, 800]))
+
+        # Adiciona o botão sobre o container principal
+        self.btn_mostrar_painel.setParent(container)
+        self.btn_mostrar_painel.move(10, self.height() - 600)
+        self.btn_mostrar_painel.raise_()  # garante que ele fique visível por cima
+
+        # ------------------------------
+        # Reposiciona o botão se a janela for redimensionada
+        # ------------------------------
+        def reposicionar_botao():
+            self.btn_mostrar_painel.move(10, self.height() - 600)
+
+        def resizeEvent(event):
+            reposicionar_botao()
+            return super(PDFEditor, self).resizeEvent(event)
+
+        self.resizeEvent = resizeEvent
+
+        # ------------------------------
+        # Timer para detectar se o painel foi escondido
+        # ------------------------------
+        def verificar_painel_escondido():
+            tamanhos = self.splitter.sizes()
+            self.btn_mostrar_painel.setVisible(tamanhos[0] < 30)
+
+        self.timer_splitter = QTimer()
+        self.timer_splitter.timeout.connect(verificar_painel_escondido)
+        self.timer_splitter.start(200)
+
+        # Para permitir arrastar o conteúdo
+        self._arrastando = False
+        self._pos_inicial = None
+        self.scroll_area.viewport().setMouseTracking(True)
+        self.scroll_area.viewport().installEventFilter(self)
 
 
+   
+    
 
 
-
+       
 
     # Dentro da classe PDFEditor
     def closeEvent(self, event):
@@ -136,15 +243,10 @@ class PDFEditor(QMainWindow):
                 self,
                 "Fechar Editor",
                 "Deseja salvar os documentos antes de sair?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No | QMessageBox.StandardButton.Cancel
+                 QMessageBox.StandardButton.No | QMessageBox.StandardButton.Cancel
             )
 
-            if resposta == QMessageBox.StandardButton.Yes:
-                # Salva todos os documentos abertos
-                for nome_doc in G.DOCUMENTOS.keys():
-                    self.logica.salvar_documento(self, nome_doc)
-                event.accept()  # fecha a janela
-            elif resposta == QMessageBox.StandardButton.No:
+            if resposta == QMessageBox.StandardButton.No:
                 event.accept()  # fecha a janela sem salvar
             else:
                 event.ignore()  # cancela o fechamento
@@ -254,54 +356,7 @@ class PDFEditor(QMainWindow):
         self.logica.salvar_documento(self, nome_doc)
         self.atualizar_tamanho_paginas
 
-    # ------------------------------
-    # Extrair texto
-    # ------------------------------
-    def mostrar_texto_pdf(self):
-        if getattr(self, "editor_texto", None):
-            self.editor_texto.setParent(None)
-            self.editor_texto.deleteLater()
-        if getattr(self, "btn_voltar", None):
-            self.btn_voltar.setParent(None)
-            self.btn_voltar.deleteLater()
 
-        texto_total = ""
-        for pagina_id, pagina_info in G.PAGINAS.items():
-            nome_doc = pagina_info["doc_original"]
-            descricao = pagina_info["descricao"]
-            try:
-                doc = G.DOCUMENTOS[nome_doc]["doc"]
-                pagina = doc.load_page(pagina_info["pagina_num"])
-                texto = pagina.get_text("text")
-            except Exception as e:
-                texto = f"[Erro ao extrair texto: {e}]"
-            texto_total += f"--- {nome_doc} - {descricao} ---\n{texto}\n\n"
-
-        if not texto_total.strip():
-            return
-
-        self.editor_texto = QTextEdit()
-        self.editor_texto.setPlainText(texto_total)
-        self.editor_texto.setReadOnly(True)
-
-        self.scroll_area.hide()
-        self.centralWidget().layout().addWidget(self.editor_texto)
-
-        self.btn_voltar = QPushButton("Voltar para PDF")
-        self.btn_voltar.clicked.connect(self.voltar_para_pdf)
-        self.centralWidget().layout().addWidget(self.btn_voltar)
-
-    def voltar_para_pdf(self):
-        if getattr(self, "editor_texto", None):
-            self.editor_texto.setParent(None)
-            self.editor_texto.deleteLater()
-            self.editor_texto = None
-        if getattr(self, "btn_voltar", None):
-            self.btn_voltar.setParent(None)
-            self.btn_voltar.deleteLater()
-            self.btn_voltar = None
-        self.scroll_area.show()
-        self.atualizar_tamanho_paginas()
     # ------------------------------
     # Ações de Desfazer/Refazer
     # ------------------------------
@@ -320,7 +375,41 @@ class PDFEditor(QMainWindow):
         self.atualizar_tamanho_paginas()
         print("🡄 Última ação refeita!")
 
+
+
+ # ---------------- Zoom ----------------
+    def ajustar_zoom(self, delta):
+        novo_zoom = self.zoom_factor + delta
+        if 0.3 <= novo_zoom <= 3.0:
+            self.zoom_factor = novo_zoom
+            self.renderizar_paginas()
+
+    def definir_zoom(self, valor):
+        self.zoom_factor = valor
+        self.renderizar_paginas()
+
+    
+    # ---------------- Painel recolhível ----------------
+    def verificar_painel(self):
+        tamanhos = self.splitter.sizes()
+        if tamanhos[0] < 40:
+            self.painel_widget.setVisible(False)
+            self.icone_painel.setVisible(True)
+            self.splitter.setSizes([0, self.width()])
+        else:
+            self.painel_widget.setVisible(True)
+            self.icone_painel.setVisible(False)
+
+    def restaurar_painel(self):
+        self.painel_widget.setVisible(True)
+        self.icone_painel.setVisible(False)
+        self.splitter.setSizes([self.tamanho_padrao, self.width() - self.tamanho_padrao])
+
+
+
+
 if __name__ == "__main__":
+    warnings.filterwarnings("ignore", category=DeprecationWarning)
     app = QApplication(sys.argv)
     janela = PDFEditor()
     janela.show()

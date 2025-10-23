@@ -222,7 +222,7 @@ class LogicaPagina(QObject):
         layout.addWidget(QLabel("Escolha o formato para salvar:"))
 
         combo = QComboBox()
-        combo.addItems(["PDF", "Imagem (PNG)", "DOCX", "TXT"])
+        combo.addItems(["PDF", "Imagem (PNG)", "DOCX"])
         layout.addWidget(combo)
 
         btn_ok = QPushButton("Salvar")
@@ -246,10 +246,6 @@ class LogicaPagina(QObject):
                 caminho, _ = QFileDialog.getSaveFileName(dialog, "Salvar como DOCX", "", "Word Files (*.docx)")
                 if caminho:
                     sucesso = geradora.salvar_como_docx(caminho)
-            elif escolha == "TXT":
-                caminho, _ = QFileDialog.getSaveFileName(dialog, "Salvar como TXT", "", "Text Files (*.txt)")
-                if caminho:
-                    sucesso = geradora.salvar_como_txt(caminho)
 
             if sucesso:
                 QMessageBox.information(dialog, "Sucesso", f"Arquivo salvo com sucesso como {escolha}!")
