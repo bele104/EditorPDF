@@ -83,85 +83,51 @@ class RenderizadorPaginas:
             self.logica.documentos_atualizados.connect(self.renderizar_com_zoom_padrao)
 
 
-            
-    # ------------------------------
-    # NOVO MÉTODO (Obrigatório para o sistema de sinais e Undo/Redo)
-    # ------------------------------
-    # ------------------------ PDF Lógica ------------------------
-    def excluir_documento(self, janela, nome_doc, apagar_sem_pergunta=False):
-        """
-        Exclui o documento da memória e da lista.
-        Se apagar_sem_pergunta=False, pergunta ao usuário se quer salvar antes.
-        """
-        if nome_doc not in G.DOCUMENTOS:
-            QMessageBox.warning(janela, "Erro", "Documento não encontrado!")
-            return
-
-        if not apagar_sem_pergunta:
-            resposta = QMessageBox.question(
-                janela,
-                "Excluir Documento",
-                f"Deseja salvar o documento '{nome_doc}' antes de apagar?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No | QMessageBox.StandardButton.Cancel
-            )
-            if resposta == QMessageBox.StandardButton.Cancel:
-                return
-            elif resposta == QMessageBox.StandardButton.Yes:
-                self.logica.salvar_documento_dialog(janela, nome_doc)
-
-        # 1️⃣ Limpa widgets da interface
-        ids_paginas = G.DOCUMENTOS[nome_doc]["paginas"]
-        for pid in ids_paginas:
-            widget = self.paginas_widgets.get(pid)
-            if widget:
-                widget.setParent(None)
-                widget.deleteLater()
-                self.paginas_widgets.pop(pid, None)
-                self.pixmaps_originais.pop(pid, None)
-
-        # 2️⃣ Remove do banco de dados
-        for pid in ids_paginas:
-            if pid in G.PAGINAS:
-                del G.PAGINAS[pid]
-        del G.DOCUMENTOS[nome_doc]
-
-        # 3️⃣ Atualiza histórico e sinal
-        G.Historico.salvar_estado()
-        if hasattr(self.logica, "documentos_atualizados"):
-            self.logica.documentos_atualizados.emit()
-
-        print(f"[AÇÃO] Documento '{nome_doc}' excluído com sucesso.")
-
+   
 
     # ------------------------ Renderização segura ------------------------
     def renderizar_com_zoom_padrao(self):
-        """Atualiza todas as páginas com o zoom atual sem recriar widgets."""
+        """
+        Atualiza toda a interface com o zoom atual, 
+        recriando widgets e a lista lateral, respeitando a ordem em G.DOCUMENTOS.
+        """
         if getattr(self, "bloquear_render", False):
             return  # evita loop de sinais
 
-        for pid, widget in list(self.paginas_widgets.items()):
-            # ⚠️ Protege contra páginas que foram apagadas do banco
-            if pid not in G.PAGINAS:
-                continue
+        # Primeiro limpa layout e lista lateral
+        while self.layout_central.count():
+            item = self.layout_central.takeAt(0)
+            widget = item.widget()
+            if widget:
+                widget.setParent(None)
+                widget.deleteLater()
+        self.lista_lateral.clear()
 
-            pixmap_original = self.pixmaps_originais.get(pid)
-            if not pixmap_original:
-                continue
+        # Limpa caches internos
+        self.paginas_widgets.clear()
+        self.pixmaps_originais.clear()
 
-            doc_origem = G.PAGINAS[pid]["doc_original"]
-            zoom = self.zoom_por_doc.get(doc_origem, G.ZOOM_PADRAO)
+        # Renderiza todos os documentos e páginas na ordem atual
+        for nome_doc, dados in G.DOCUMENTOS.items():
+            self._adicionar_cabecalho_doc(nome_doc)
+            for idx, pagina_id in enumerate(dados["paginas"]):
+                pagina_info = G.PAGINAS[pagina_id]
+                doc_origem = pagina_info["doc_original"]
+                doc_real = G.DOCUMENTOS[doc_origem]["doc"]
+                pagina_num_origem = pagina_info["fitz_index"]
+                pagina = doc_real.load_page(pagina_num_origem)
 
-            nova_largura = int(pixmap_original.width() * zoom)
-            nova_altura = int(pixmap_original.height() * zoom)
-            pixmap_redimensionado = pixmap_original.scaled(
-                nova_largura, nova_altura,
-                Qt.AspectRatioMode.KeepAspectRatio,
-                Qt.TransformationMode.SmoothTransformation
-            )
+                # Cria pixmap com zoom atual
+                zoom = self.zoom_por_doc.get(doc_origem, G.ZOOM_PADRAO)
+                pix = pagina.get_pixmap(matrix=fitz.Matrix(zoom, zoom))
+                img = QImage(pix.samples, pix.width, pix.height, pix.stride, QImage.Format.Format_RGB888)
+                pixmap = QPixmap.fromImage(img)
 
-            label = widget.findChild(QLabel, "page_image_label")
-            if label:
-                label.setPixmap(pixmap_redimensionado)
+                # Adiciona widget da página
+                self._adicionar_pagina(nome_doc, idx, pagina_id, zoom)
+
+        # Atualiza tamanho das páginas
+        self.lista_lateral.window().atualizar_tamanho_paginas()
 
 
 
@@ -612,17 +578,17 @@ class RenderizadorPaginas:
             -1 if direcao == "cima" else +1,
             lambda: self._finalizar_mover_e_atualizar(nome_doc, idx, direcao)
         )
-
     def _finalizar_mover_e_atualizar(self, nome_doc, idx, direcao):
-        """Executado após a animação de troca terminar."""
+        """Executado após a animação de mover terminar."""
+        print("✅ CHEGOU NO FINALIZAR MOVER")
         if direcao == "cima":
             self.logica.mover_para_cima(nome_doc, idx)
         else:
             self.logica.mover_para_baixo(nome_doc, idx)
 
         self.renderizar_com_zoom_padrao()
-
         self.lista_lateral.window().atualizar_tamanho_paginas()
+
 
     # ---------------------------------------------------------------
     def _excluir_e_atualizar(self, nome_doc, idx):
@@ -633,10 +599,18 @@ class RenderizadorPaginas:
         )
 
     def _finalizar_excluir_e_atualizar(self, nome_doc, idx):
-        """Executado após a animação de exclusão terminar."""
         self.logica.excluir_pagina(nome_doc, idx)
         self.renderizar_com_zoom_padrao()
         self.lista_lateral.window().atualizar_tamanho_paginas()
+
+        # 🔥 Restaura a atualização total — como na versão antiga
+        self.renderizar_com_zoom_padrao()
+        self.lista_lateral.window().atualizar_tamanho_paginas()
+
+        # Opcional: ainda pode emitir o sinal, se quiser
+        if hasattr(self.logica, "documentos_atualizados"):
+            self.logica.documentos_atualizados.emit()
+
 
 
 
