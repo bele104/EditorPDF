@@ -87,12 +87,63 @@ class RenderizadorPaginas:
     # ------------------------------
     # NOVO MÉTODO (Obrigatório para o sistema de sinais e Undo/Redo)
     # ------------------------------
+    # ------------------------ PDF Lógica ------------------------
+    def excluir_documento(self, janela, nome_doc, apagar_sem_pergunta=False):
+        """
+        Exclui o documento da memória e da lista.
+        Se apagar_sem_pergunta=False, pergunta ao usuário se quer salvar antes.
+        """
+        if nome_doc not in G.DOCUMENTOS:
+            QMessageBox.warning(janela, "Erro", "Documento não encontrado!")
+            return
+
+        if not apagar_sem_pergunta:
+            resposta = QMessageBox.question(
+                janela,
+                "Excluir Documento",
+                f"Deseja salvar o documento '{nome_doc}' antes de apagar?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No | QMessageBox.StandardButton.Cancel
+            )
+            if resposta == QMessageBox.StandardButton.Cancel:
+                return
+            elif resposta == QMessageBox.StandardButton.Yes:
+                self.logica.salvar_documento_dialog(janela, nome_doc)
+
+        # 1️⃣ Limpa widgets da interface
+        ids_paginas = G.DOCUMENTOS[nome_doc]["paginas"]
+        for pid in ids_paginas:
+            widget = self.paginas_widgets.get(pid)
+            if widget:
+                widget.setParent(None)
+                widget.deleteLater()
+                self.paginas_widgets.pop(pid, None)
+                self.pixmaps_originais.pop(pid, None)
+
+        # 2️⃣ Remove do banco de dados
+        for pid in ids_paginas:
+            if pid in G.PAGINAS:
+                del G.PAGINAS[pid]
+        del G.DOCUMENTOS[nome_doc]
+
+        # 3️⃣ Atualiza histórico e sinal
+        G.Historico.salvar_estado()
+        if hasattr(self.logica, "documentos_atualizados"):
+            self.logica.documentos_atualizados.emit()
+
+        print(f"[AÇÃO] Documento '{nome_doc}' excluído com sucesso.")
+
+
+    # ------------------------ Renderização segura ------------------------
     def renderizar_com_zoom_padrao(self):
         """Atualiza todas as páginas com o zoom atual sem recriar widgets."""
         if getattr(self, "bloquear_render", False):
             return  # evita loop de sinais
 
-        for pid, widget in self.paginas_widgets.items():
+        for pid, widget in list(self.paginas_widgets.items()):
+            # ⚠️ Protege contra páginas que foram apagadas do banco
+            if pid not in G.PAGINAS:
+                continue
+
             pixmap_original = self.pixmaps_originais.get(pid)
             if not pixmap_original:
                 continue
@@ -111,6 +162,7 @@ class RenderizadorPaginas:
             label = widget.findChild(QLabel, "page_image_label")
             if label:
                 label.setPixmap(pixmap_redimensionado)
+
 
 
 

@@ -3,7 +3,7 @@ import os
 
 import copy
 from PyQt6.QtWidgets import QFileDialog, QMessageBox
-from PyQt6.QtCore import QObject, pyqtSignal
+from PyQt6.QtCore import QObject, pyqtSignal,Qt
 import globais as G 
 from conversor import ConversorArquivo as conversor
 from PyQt6.QtWidgets import QDialog, QVBoxLayout, QLabel, QComboBox, QPushButton, QFileDialog, QMessageBox
@@ -122,16 +122,12 @@ class LogicaPagina(QObject):
             self.documentos_atualizados.emit()
 
 
+    # ------------------------ PDF Lógica ------------------------
     def excluir_documento(self, janela, nome_doc, apagar_sem_pergunta=False):
-        """
-        Exclui o documento da memória e da lista.
-        Se apagar_sem_pergunta=False, pergunta ao usuário se quer salvar antes.
-        """
         if nome_doc not in G.DOCUMENTOS:
             QMessageBox.warning(janela, "Erro", "Documento não encontrado!")
             return
 
-        # Pergunta apenas se não for apagar depois de salvar
         if not apagar_sem_pergunta:
             resposta = QMessageBox.question(
                 janela,
@@ -144,19 +140,53 @@ class LogicaPagina(QObject):
             elif resposta == QMessageBox.StandardButton.Yes:
                 self.salvar_documento_dialog(janela, nome_doc)
 
-        # Remove páginas do documento
+        # Remove páginas
         ids_paginas = G.DOCUMENTOS[nome_doc]["paginas"]
         for pid in ids_paginas:
             if pid in G.PAGINAS:
                 del G.PAGINAS[pid]
-
-        # Remove o documento
         del G.DOCUMENTOS[nome_doc]
 
-        # Atualiza histórico e sinal
         G.Historico.salvar_estado()
         self.documentos_atualizados.emit()
         print(f"[AÇÃO] Documento '{nome_doc}' excluído com sucesso.")
+
+
+
+
+
+
+    # ------------------------ Renderização segura ------------------------
+    def renderizar_com_zoom_padrao(self):
+        """Atualiza todas as páginas com o zoom atual sem recriar widgets."""
+        if getattr(self, "bloquear_render", False):
+            return  # evita loop de sinais
+
+        for pid, widget in list(self.paginas_widgets.items()):
+            # ⚠️ Protege contra páginas que foram apagadas do banco
+            if pid not in G.PAGINAS:
+                continue
+
+            pixmap_original = self.pixmaps_originais.get(pid)
+            if not pixmap_original:
+                continue
+
+            doc_origem = G.PAGINAS[pid]["doc_original"]
+            zoom = self.zoom_por_doc.get(doc_origem, G.ZOOM_PADRAO)
+
+            nova_largura = int(pixmap_original.width() * zoom)
+            nova_altura = int(pixmap_original.height() * zoom)
+            pixmap_redimensionado = pixmap_original.scaled(
+                nova_largura, nova_altura,
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation
+            )
+
+            label = widget.findChild(QLabel, "page_image_label")
+            if label:
+                label.setPixmap(pixmap_redimensionado)
+
+
 
 
     def moverPagina(self, pagina_id, destino):
@@ -238,10 +268,6 @@ class LogicaPagina(QObject):
                 caminho, _ = QFileDialog.getSaveFileName(dialog, "Salvar como PDF", "", "PDF Files (*.pdf)")
                 if caminho:
                     sucesso = geradora.salvar_como_pdf(caminho)
-            elif escolha == "Imagem (PNG)":
-                caminho_base, _ = QFileDialog.getSaveFileName(dialog, "Salvar como Imagem", "", "PNG Files (*.png)")
-                if caminho_base:
-                    sucesso = geradora.salvar_como_imagem(caminho_base, formato="PNG")
             elif escolha == "DOCX":
                 caminho, _ = QFileDialog.getSaveFileName(dialog, "Salvar como DOCX", "", "Word Files (*.docx)")
                 if caminho:
