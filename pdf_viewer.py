@@ -3,9 +3,9 @@ from PyQt6.QtWidgets import (
     QListWidgetItem, QSizePolicy, QDialog, QComboBox, QMessageBox,
     QScrollArea, QFrame, QGraphicsOpacityEffect
 )
-from PyQt6.QtGui import QPixmap, QImage
+from PyQt6.QtGui import QPixmap, QImage, QIcon
 from PyQt6.QtCore import Qt, QPropertyAnimation, QEasingCurve, QPoint, QRect, QSize
-
+from PyQt6.QtCore import QSize
 import fitz  # PyMuPDF
 import os
 import globais as G
@@ -57,8 +57,10 @@ class RenderizadorPaginas:
     def __init__(self, layout_central, lista_lateral, logica, scroll_area):
         self.bloquear_render = False
 
+        ICONS_PATH = G.ICONS_PATH
         super().__init__()
 
+        
         # ---------------- Atributos principais ----------------
         self.layout_central = layout_central          # QVBoxLayout onde ficam as páginas
         self.lista_lateral = lista_lateral            # QListWidget da lateral
@@ -176,25 +178,32 @@ class RenderizadorPaginas:
         self.lista_lateral.setSizePolicy(QSizePolicy.Policy.MinimumExpanding, QSizePolicy.Policy.Expanding)
 
     def _adicionar_cabecalho_doc(self, nome_doc):
-        from PyQt6.QtWidgets import QHBoxLayout, QWidget
+
+
         header_widget = QWidget()
         header_layout = QHBoxLayout(header_widget)
         header_layout.setContentsMargins(2,2,2,2)
         header_layout.setSpacing(5)
 
-        nome,_ = os.path.splitext(nome_doc)
-        lbl_doc = QLabel(f"📑{abreviar_titulo(nome, limite=22)}")
+        # Ícone do documento
+        icone = QLabel()
+        pixmap = QPixmap(f"{G.ICONS_PATH}/file.svg").scaled(16, 16, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+        icone.setPixmap(pixmap)
+        header_layout.addWidget(icone)
+
+        # Nome do documento
+        nome, _ = os.path.splitext(nome_doc)
+        lbl_doc = QLabel(f"{abreviar_titulo(nome, limite=22)}")
         lbl_doc.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         header_layout.addWidget(lbl_doc)
-        header_layout.addStretch()
 
-        # Botão Salvar
-        btn_salvar = QPushButton("💾 Salvar")
+    # Botão Salvar
+        btn_salvar = QPushButton()
+        btn_salvar.setIcon(QIcon(f"{G.ICONS_PATH}/save-all.svg"))
         btn_salvar.setMaximumWidth(100)
         btn_salvar.setStyleSheet("""
             QPushButton {
                 background-color: #4CAF50; 
-                color: white; 
                 border-radius: 5px;
                 font-weight: bold;
             }
@@ -206,12 +215,12 @@ class RenderizadorPaginas:
         header_layout.addWidget(btn_salvar)
 
         # Botão Apagar
-        btn_apagar = QPushButton("🗑️ Apagar")
+        btn_apagar = QPushButton()
+        btn_apagar.setIcon(QIcon(f"{G.ICONS_PATH}/file-x.svg"))
         btn_apagar.setMaximumWidth(100)
         btn_apagar.setStyleSheet("""
             QPushButton {
                 background-color: #f44336; 
-                color: white; 
                 border-radius: 5px;
                 font-weight: bold;
             }
@@ -225,11 +234,11 @@ class RenderizadorPaginas:
         # Adiciona à lista lateral
         header_item = QListWidgetItem()
         header_item.setSizeHint(header_widget.sizeHint())
+        header_item.setFlags(Qt.ItemFlag.ItemIsEnabled)  # cabeçalho não selecionável
+        header_item.setData(1000, {"tipo":"doc", "nome_doc": nome_doc})
         self.lista_lateral.addItem(header_item)
         self.lista_lateral.setItemWidget(header_item, header_widget)
-        header_item.setFlags(Qt.ItemFlag.ItemIsEnabled)
-        # Guarda informação de que é cabeçalho de documento
-        header_item.setData(1000, {"tipo":"doc", "nome_doc": nome_doc})
+
 
 
     def _adicionar_pagina(self, nome_doc, idx, pagina_id, zoom):
@@ -290,30 +299,51 @@ class RenderizadorPaginas:
             btn_layout.setSpacing(5)
             btn_layout.addStretch()
 
-            btn_transferir = QPushButton("🔄")
+            # Botões fixos no lado direito da página
+            btn_container = QWidget()
+            btn_container.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
+            btn_layout = QVBoxLayout(btn_container)
+            btn_layout.setContentsMargins(0, 0, 0, 0)
+            btn_layout.setSpacing(5)
+            btn_layout.addStretch()
+
+            # Botão transferir
+            btn_transferir = QPushButton()
+            btn_transferir.setIcon(QIcon(f"{G.ICONS_PATH}/git-compare-arrows.svg"))
             btn_transferir.setFixedSize(30, 30)
+     
             btn_transferir.clicked.connect(lambda _, pid=pagina_id: self.transferir_pagina(pid))
             btn_layout.addWidget(btn_transferir, alignment=Qt.AlignmentFlag.AlignHCenter)
 
+            # Botão mover para cima
             if idx > 0:
-                btn_up = QPushButton("⬆️")
+                btn_up = QPushButton()
+                btn_up.setIcon(QIcon(f"{G.ICONS_PATH}/move-up.svg"))
                 btn_up.setFixedSize(30, 30)
+    
                 btn_up.clicked.connect(lambda _, d=nome_doc, i=idx: self._mover_e_atualizar(d, i, "cima"))
                 btn_layout.addWidget(btn_up, alignment=Qt.AlignmentFlag.AlignHCenter)
+
+            # Botão mover para baixo
             if idx < len(G.DOCUMENTOS[nome_doc]["paginas"]) - 1:
-                btn_down = QPushButton("⬇️")
+                btn_down = QPushButton()
+                btn_down.setIcon(QIcon(f"{G.ICONS_PATH}/move-down.svg"))
                 btn_down.setFixedSize(30, 30)
+              
                 btn_down.clicked.connect(lambda _, d=nome_doc, i=idx: self._mover_e_atualizar(d, i, "baixo"))
                 btn_layout.addWidget(btn_down, alignment=Qt.AlignmentFlag.AlignHCenter)
 
-            btn_del = QPushButton("❌")
+            # Botão delete
+            btn_del = QPushButton()
+            btn_del.setIcon(QIcon(f"{G.ICONS_PATH}/delete.svg"))
             btn_del.setFixedSize(30, 30)
             btn_del.setStyleSheet("""
                 QPushButton {
                     background-color: #f44336; 
-                    color: white; 
+                    color: #fff; /* ícone branco */
                     font-weight: bold; 
                     border-radius: 5px;
+                    border: none;
                 }
                 QPushButton:hover {
                     background-color: #da190b;
@@ -322,6 +352,8 @@ class RenderizadorPaginas:
             btn_del.clicked.connect(lambda _, d=nome_doc, i=idx: self._excluir_e_atualizar(d, i))
             btn_layout.addWidget(btn_del, alignment=Qt.AlignmentFlag.AlignHCenter)
             btn_layout.addStretch()
+
+
 
             # Os botões ficam sempre "grudados" à direita da imagem
             container_layout.addWidget(btn_container, alignment=Qt.AlignmentFlag.AlignVCenter)
@@ -344,7 +376,8 @@ class RenderizadorPaginas:
             print(f"Erro ao renderizar página {pagina_id}: {e}")
 
     def _adicionar_item_lateral(self, pagina_id, descricao):
-        from PyQt6.QtWidgets import QHBoxLayout, QWidget, QComboBox
+        from PyQt6.QtWidgets import QHBoxLayout, QWidget, QComboBox, QPushButton, QLabel, QListWidgetItem
+        
         item_widget = QWidget()
         item_layout = QHBoxLayout(item_widget)
         item_layout.setContentsMargins(2,2,2,2)
@@ -355,22 +388,20 @@ class RenderizadorPaginas:
         lbl_item.setWordWrap(True)
         item_layout.addWidget(lbl_item)
 
-        btn_lista_mover = QPushButton("🔄")
+        btn_lista_mover = QPushButton()
+        btn_lista_mover.setIcon(QIcon(f"{G.ICONS_PATH}/git-compare-arrows.svg"))
         btn_lista_mover.setMaximumWidth(30)
-        # 💥 CORREÇÃO: Conecta ao novo método 'transferir_pagina'
-        btn_lista_mover.clicked.connect(lambda _, pid=pagina_id: self.transferir_pagina(pid)) 
+        btn_lista_mover.clicked.connect(lambda _, pid=pagina_id: self.transferir_pagina(pid))
         item_layout.addWidget(btn_lista_mover)
-        
 
         item_widget.setLayout(item_layout)
 
         item_list = QListWidgetItem()
+        item_list.setFlags(Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled)  # ✅ importante
         self.lista_lateral.addItem(item_list)
         self.lista_lateral.setItemWidget(item_list, item_widget)
-         # **Guarda informação de que é página**
         item_list.setData(1000, {"tipo":"pagina", "pagina_id": pagina_id})
 
-        # No arquivo pdf_viewer.py, dentro da classe RenderizadorPaginas
 
     
 

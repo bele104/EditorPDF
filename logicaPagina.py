@@ -2,8 +2,10 @@ import fitz
 import os
 
 import copy
+from PyQt6.QtGui import QIcon
+
 from PyQt6.QtWidgets import QFileDialog, QMessageBox
-from PyQt6.QtCore import QObject, pyqtSignal,Qt
+from PyQt6.QtCore import QObject, pyqtSignal,Qt,QSize
 import globais as G 
 from conversor import ConversorArquivo as conversor
 from PyQt6.QtWidgets import QDialog, QVBoxLayout, QLabel, QComboBox, QPushButton, QFileDialog, QMessageBox
@@ -36,8 +38,8 @@ class LogicaPagina(QObject):
             nome_doc = os.path.basename(caminho_origem)
             nome, _ = os.path.splitext(nome_doc)
             # 🔸 Abrevia se for muito longo
-            nome_doc_abreviado = f"📄{abreviar_nome(nome, limite=20)}"
-   
+            nome_doc_abreviado = f"={abreviar_nome(nome, limite=20)}"
+          
             
            
             G.DOCUMENTOS[nome_doc] = {"doc": doc, "paginas": [],"path":caminho}
@@ -51,7 +53,7 @@ class LogicaPagina(QObject):
                 pagina=doc.load_page(i)
                 # Armazena página de forma independente
                 G.PAGINAS[pid] = {
-                    "descricao": f"{nome_doc_abreviado}- Página {i+1}",
+                    "descricao": f"{nome_doc_abreviado}-pag-{i+1}",
                     "doc_original": nome_doc,
                     # 💥 ESSENCIAL: Este índice PyMuPDF (0-based) é imutável
                     "fitz_index": i, 

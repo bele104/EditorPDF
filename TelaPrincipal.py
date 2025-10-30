@@ -4,10 +4,12 @@ from PyQt6.QtWidgets import (
     QListWidget, QListWidgetItem, QLabel, QScrollArea, QTextEdit, QDialog, QComboBox,QSizePolicy,QFrame, 
     QVBoxLayout, QHBoxLayout, QPushButton,  QMessageBox,QFileDialog,QSplitter
 )
-from PyQt6.QtGui import QPixmap, QImage, QKeySequence, QAction
+from PyQt6.QtGui import QPixmap, QImage, QKeySequence, QAction, QIcon
 from PyQt6.QtCore import Qt,QTimer
 from logicaPagina import LogicaPagina as logica
 import fitz
+from PyQt6.QtCore import QSize
+
 
 from pdf_viewer import RenderizadorPaginas
 
@@ -22,7 +24,10 @@ class PDFEditor(QMainWindow):
     def __init__(self):
         
         super().__init__()
-
+        #Caminho base dos ícones
+        ICONS_PATH= G.ICONS_PATH
+        with open("tema_escuro.qss", "r") as f:
+            self.setStyleSheet(f.read())
         self.setWindowTitle("Serena LOVE PDF")
         self.setGeometry(100, 100, 1000, 700)
         self.setAcceptDrops(True)  # Permite arrastar arquivos para a janela inteira
@@ -42,13 +47,20 @@ class PDFEditor(QMainWindow):
 
         # Linha 1: Desfazer e Refazer (esquerda)
         linha_atalhos = QHBoxLayout()
-        self.btn_desfazer_top = QPushButton("↩︎")
-        self.btn_desfazer_top.setFixedSize(30, 20)
+        # --- Botão Desfazer ---
+        self.btn_desfazer_top = QPushButton()  # sem texto aqui
+        self.btn_desfazer_top.setIcon(QIcon(f"{ICONS_PATH}/undo-dot.svg"))
+        self.btn_desfazer_top.setIconSize(QSize(24, 24))
+        self.btn_desfazer_top.setFixedSize(40, 36)
         self.btn_desfazer_top.clicked.connect(self.desfazer_acao)
 
-        self.btn_refazer_top = QPushButton("↪︎")
-        self.btn_refazer_top.setFixedSize(30, 20)
+        # --- Botão Refazer ---
+        self.btn_refazer_top = QPushButton()
+        self.btn_refazer_top.setIcon(QIcon(f"{ICONS_PATH}/redo-2.svg"))
+        self.btn_refazer_top.setIconSize(QSize(24, 24))
+        self.btn_refazer_top.setFixedSize(40, 36)
         self.btn_refazer_top.clicked.connect(self.refazer_acao)
+
 
         linha_atalhos.addWidget(self.btn_desfazer_top)
         linha_atalhos.addWidget(self.btn_refazer_top)
@@ -60,20 +72,22 @@ class PDFEditor(QMainWindow):
         # Linha 3: Zoom centralizado
         linha_zoom = QHBoxLayout()
         linha_zoom.addStretch()
-        self.btn_zoom_menos = QPushButton("➖")
-        self.btn_zoom_mais = QPushButton("➕")
-        self.btn_zoom_reset =QPushButton("100%")
+        
+
+
+        # Botões de zoom
+        self.btn_zoom_menos = QPushButton()
+        self.btn_zoom_menos.setIcon(QIcon(f"{ICONS_PATH}/zoom-out.svg"))
+
+        self.btn_zoom_mais = QPushButton()
+        self.btn_zoom_mais.setIcon(QIcon(f"{ICONS_PATH}/zoom-in.svg"))
+
+        self.btn_zoom_reset = QPushButton()
+        self.btn_zoom_reset.setIcon(QIcon(f"{ICONS_PATH}/expand.svg"))
         for btn in [self.btn_zoom_menos, self.btn_zoom_mais,self.btn_zoom_reset]:
+            btn.setIconSize(QSize(20, 20))
             btn.setFixedSize(30, 30)
-            btn.setStyleSheet("""
-                QPushButton {
-                    background-color: #f0f0f0;
-                    border-radius: 4px;
-                }
-                QPushButton:hover {
-                    background-color: #dcdcdc;
-                }
-            """)
+            
 
         self.btn_zoom_menos.clicked.connect(lambda: self.gerar.ajustar_zoom(-0.1))
         self.btn_zoom_mais.clicked.connect(lambda: self.gerar.ajustar_zoom(+0.1))
@@ -90,13 +104,37 @@ class PDFEditor(QMainWindow):
         # ------------------------------
         # Painel esquerdo
         # ------------------------------
-        self.btn_abrir = QPushButton("Abrir Documento")
+        self.btn_abrir = QPushButton(" Abrir Doc")
+        self.btn_abrir.setIcon(QIcon(f"{ICONS_PATH}/folder-plus.svg"))
         self.lista_paginas = QListWidget()
         self.lista_paginas.setSizePolicy(QSizePolicy.Policy.MinimumExpanding, QSizePolicy.Policy.Expanding)
 
         layout_esquerda = QVBoxLayout()
         layout_esquerda.addWidget(self.btn_abrir)
-        layout_esquerda.addWidget(QLabel("Arquivos e Páginas"))
+
+        # Cria um label com ícone e texto lado a lado
+        titulo_widget = QWidget()
+        titulo_layout = QHBoxLayout(titulo_widget)
+        titulo_layout.setContentsMargins(0, 0, 0, 0)
+        titulo_layout.setSpacing(5)  # espaço entre ícone e texto
+
+        # Ícone
+        icon_label = QLabel()
+        pixmap = QPixmap(f"{ICONS_PATH}/folder-tree.svg").scaled(18, 18, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+        icon_label.setPixmap(pixmap)
+        icon_label.setFixedSize(20, 20)  # garante tamanho consistente
+
+        # Texto
+        text_label = QLabel("Arquivos e Páginas:")
+        
+
+        # Adiciona ao layout horizontal
+        titulo_layout.addWidget(icon_label)
+        titulo_layout.addWidget(text_label)
+        titulo_layout.addStretch()
+
+        # Adiciona ao layout esquerdo
+        layout_esquerda.addWidget(titulo_widget)
         layout_esquerda.addWidget(self.lista_paginas)
         layout_esquerda.addStretch()
 
@@ -175,19 +213,13 @@ class PDFEditor(QMainWindow):
         # ------------------------------
         # Botão "mostrar painel" (fica visível quando o painel lateral é fechado)
         # ------------------------------
-        self.btn_mostrar_painel = QPushButton("📂")
+        self.btn_mostrar_painel = QPushButton()
+        self.btn_mostrar_painel.setIcon(QIcon(f"{ICONS_PATH}/folder-tree.svg"))
         self.btn_mostrar_painel.setFixedSize(20, 100)
+        self.btn_mostrar_painel.setIconSize(QSize(20, 20))
         self.btn_mostrar_painel.setVisible(False)
-        self.btn_mostrar_painel.setStyleSheet("""
-            QPushButton {
-                border-radius: 8px;
-                background-color: #ececec;
-                font-size: 18px;
-            }
-            QPushButton:hover {
-                background-color: #d6d6d6;
-            }
-        """)
+
+
         self.btn_mostrar_painel.clicked.connect(lambda: self.splitter.setSizes([200, 800]))
 
         # Adiciona o botão sobre o container principal

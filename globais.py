@@ -5,6 +5,9 @@ import copy
 # Variáveis globais do editor PDF
 # --------------------------------
 
+
+ICONS_PATH = r"C:\Users\vinicius.silva\Programas\EditorPDF\icons"
+
 DOCUMENTOS = {}
 
 
