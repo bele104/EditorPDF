@@ -26,6 +26,9 @@ class PDFEditor(QMainWindow):
         super().__init__()
         #Caminho base dos ícones
         ICONS_PATH= G.ICONS_PATH
+        self.setWindowIcon(QIcon(f"{G.ICONS_PATH}/logo.ico"))
+
+
         with open("tema_escuro.qss", "r") as f:
             self.setStyleSheet(f.read())
         self.setWindowTitle("Serena LOVE PDF")
@@ -443,6 +446,8 @@ class PDFEditor(QMainWindow):
 if __name__ == "__main__":
     warnings.filterwarnings("ignore", category=DeprecationWarning)
     app = QApplication(sys.argv)
+    app.setWindowIcon(QIcon("icons\logo.ico"))
+
     janela = PDFEditor()
     janela.show()
     sys.exit(app.exec())
