@@ -70,38 +70,76 @@ class PDFEditor(QMainWindow):
         linha_atalhos.addStretch()  # empurra para a esquerda
         cabecalho_layout.addLayout(linha_atalhos)
 
-        
-
-        # Linha 3: Zoom centralizado
+        # Linha de Zoom
         linha_zoom = QHBoxLayout()
         linha_zoom.addStretch()
-        
-
 
         # Botões de zoom
         self.btn_zoom_menos = QPushButton()
         self.btn_zoom_menos.setIcon(QIcon(f"{ICONS_PATH}/zoom-out.svg"))
-
         self.btn_zoom_mais = QPushButton()
         self.btn_zoom_mais.setIcon(QIcon(f"{ICONS_PATH}/zoom-in.svg"))
-
         self.btn_zoom_reset = QPushButton()
         self.btn_zoom_reset.setIcon(QIcon(f"{ICONS_PATH}/expand.svg"))
-        for btn in [self.btn_zoom_menos, self.btn_zoom_mais,self.btn_zoom_reset]:
+
+        for btn in [self.btn_zoom_menos, self.btn_zoom_mais, self.btn_zoom_reset]:
             btn.setIconSize(QSize(20, 20))
             btn.setFixedSize(30, 30)
-            
 
         self.btn_zoom_menos.clicked.connect(lambda: self.gerar.ajustar_zoom(-0.1))
         self.btn_zoom_mais.clicked.connect(lambda: self.gerar.ajustar_zoom(+0.1))
         self.btn_zoom_reset.clicked.connect(lambda: self.gerar.definir_zoom(1.0))
 
-
         linha_zoom.addWidget(self.btn_zoom_menos)
         linha_zoom.addWidget(self.btn_zoom_reset)
         linha_zoom.addWidget(self.btn_zoom_mais)
         linha_zoom.addStretch()
+
         cabecalho_layout.addLayout(linha_zoom)
+
+
+        # ------------------------------
+        # Linha de Modos de Edição (Editar / Separar)
+        linha_modos = QHBoxLayout()
+        linha_modos.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        linha_modos.setSpacing(30)
+
+        modos = [
+            ("🖊️", "Ordenar ou mudar"),
+            ("✂️", "Dividir ou Juntar")
+        ]
+
+        self.botoes_modos = []
+
+        for emoji, nome in modos:
+            vbox = QVBoxLayout()
+            vbox.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+            btn = QPushButton(emoji)
+            btn.setCheckable(True)
+            btn.setFixedSize(60, 60)
+            btn.setStyleSheet("""
+                QPushButton {
+                    border-radius: 30px;
+                    background-color: #444;
+                    font-size: 28px;
+                }
+                QPushButton:checked {
+                    background-color: #0078d7;
+                }
+            """)
+            btn.clicked.connect(self.selecionar_unico_modo)
+
+            label = QLabel(nome)
+            label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            label.setStyleSheet("color: white; font-size: 12px;")
+
+            vbox.addWidget(btn)
+            vbox.addWidget(label)
+            linha_modos.addLayout(vbox)
+            self.botoes_modos.append(btn)
+
+        cabecalho_layout.addLayout(linha_modos)
 
 
         # ------------------------------
@@ -261,7 +299,14 @@ class PDFEditor(QMainWindow):
 
 
    
-    
+    def selecionar_unico_modo(self):
+        for btn in self.botoes_modos:
+            if btn != self.sender():
+                btn.setChecked(False)
+        # Aqui você pode chamar a função real do modo selecionado
+        modo = self.sender().text()
+        print(f"Modo selecionado: {modo}")
+
 
 
        
@@ -308,8 +353,6 @@ class PDFEditor(QMainWindow):
             self.logica.abrir_documento(caminho_origem=caminho_arquivo)
             self.gerar.renderizar_todas(G.ZOOM_PADRAO)
             self.atualizar_tamanho_paginas()
-
-
 
     # ------------------------------
     # Abrir PDF

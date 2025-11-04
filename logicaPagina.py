@@ -38,7 +38,7 @@ class LogicaPagina(QObject):
             nome_doc = os.path.basename(caminho_origem)
             nome, _ = os.path.splitext(nome_doc)
             # 🔸 Abrevia se for muito longo
-            nome_doc_abreviado = f"={abreviar_nome(nome, limite=20)}"
+            nome_doc_abreviado = f"{abreviar_nome(nome, limite=20)}"
           
             
            
@@ -53,7 +53,7 @@ class LogicaPagina(QObject):
                 pagina=doc.load_page(i)
                 # Armazena página de forma independente
                 G.PAGINAS[pid] = {
-                    "descricao": f"{nome_doc_abreviado}-pag-{i+1}",
+                    "descricao": f"|--{nome_doc_abreviado}-pag-{i+1}",
                     "doc_original": nome_doc,
                     # 💥 ESSENCIAL: Este índice PyMuPDF (0-based) é imutável
                     "fitz_index": i, 
