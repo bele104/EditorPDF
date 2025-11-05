@@ -1,4 +1,4 @@
-/* ========================
+"""/* ========================
    🌙 Fundo escuro – Serena PDF
    ======================== */
 
@@ -98,3 +98,4 @@ QScrollBar::add-page, QScrollBar::sub-page {
 QSplitter::handle {
     background-color: #2f3034;
 }
+"""

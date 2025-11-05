@@ -149,6 +149,10 @@ class PDFEditor(QMainWindow):
         self.btn_abrir.setIcon(QIcon(f"{ICONS_PATH}/folder-plus.svg"))
         self.lista_paginas = QListWidget()
         self.lista_paginas.setSizePolicy(QSizePolicy.Policy.MinimumExpanding, QSizePolicy.Policy.Expanding)
+        self.lista_paginas.setDragEnabled(True)
+        self.lista_paginas.setAcceptDrops(True)
+        self.lista_paginas.setDragDropMode(QListWidget.DragDropMode.InternalMove)
+        self.lista_paginas.setDefaultDropAction(Qt.DropAction.MoveAction)
 
         layout_esquerda = QVBoxLayout()
         layout_esquerda.addWidget(self.btn_abrir)
@@ -199,7 +203,6 @@ class PDFEditor(QMainWindow):
         self.gerar = RenderizadorPaginas(self.paginas_layout, self.lista_paginas, self.logica, self.scroll_area)
 
         # ------------------------------
-
         # Filtro de arrastar
         # ------------------------------
         self.filtro_arrastar = arrastar(self.scroll_area)
@@ -295,7 +298,7 @@ class PDFEditor(QMainWindow):
         self._arrastando = False
         self._pos_inicial = None
         self.scroll_area.viewport().setMouseTracking(True)
-        self.scroll_area.viewport().installEventFilter(self)
+      
 
 
    

@@ -22,36 +22,71 @@ from PyQt6.QtCore import QObject, Qt, QEvent
 class ArrastarScrollFilter(QObject):
     def __init__(self, scroll_area):
         super().__init__()
-        self.scroll_area = scroll_area
-        self._arrastando = False
-        self._pos_inicial = None
+        self.scroll = scroll_area
+        self.arrastando = False
+        self.ultimo_ponto = None
 
     def eventFilter(self, obj, event):
-        if event.type() == QEvent.Type.MouseButtonPress:
-            if event.button() == Qt.MouseButton.LeftButton:
-                self._arrastando = True
-                self._pos_inicial = event.pos()
-                return True
+        if event.type() == QEvent.Type.MouseButtonPress and event.button() == Qt.MouseButton.RightButton:
+            self.arrastando = True
+            self.ultimo_ponto = event.pos()
+            return True
 
-        elif event.type() == QEvent.Type.MouseMove:
-            if self._arrastando and self._pos_inicial:
-                delta = event.pos() - self._pos_inicial
-                self.scroll_area.verticalScrollBar().setValue(
-                    self.scroll_area.verticalScrollBar().value() - delta.y()
-                )
-                self.scroll_area.horizontalScrollBar().setValue(
-                    self.scroll_area.horizontalScrollBar().value() - delta.x()
-                )
-                self._pos_inicial = event.pos()
-                return True
+        elif event.type() == QEvent.Type.MouseMove and self.arrastando:
+            delta = event.pos() - self.ultimo_ponto
+            self.scroll.horizontalScrollBar().setValue(self.scroll.horizontalScrollBar().value() - delta.x())
+            self.scroll.verticalScrollBar().setValue(self.scroll.verticalScrollBar().value() - delta.y())
+            self.ultimo_ponto = event.pos()
+            return True
 
-        elif event.type() == QEvent.Type.MouseButtonRelease:
-            if event.button() == Qt.MouseButton.LeftButton:
-                self._arrastando = False
-                self._pos_inicial = None
-                return True
+        elif event.type() == QEvent.Type.MouseButtonRelease and event.button() == Qt.MouseButton.RightButton:
+            self.arrastando = False
+            return True
 
         return False
+    
+def mousePressEvent(self, e):
+    if e.button() == Qt.MouseButton.LeftButton:  # arrasta widgets
+        self._arrastando = True
+        self._pos_inicial = e.pos()
+        if self.on_select:
+            self.on_select(self.pagina_id)
+    elif e.button() == Qt.MouseButton.RightButton:
+        e.ignore()  # deixa o filtro de scroll cuidar disso
+
+
+
+from PyQt6.QtWidgets import QLabel
+from PyQt6.QtGui import QDrag, QMouseEvent, QPixmap
+from PyQt6.QtCore import Qt, QByteArray, QMimeData
+from PyQt6.QtWidgets import QApplication
+
+class DraggableLabel(QLabel):
+    def __init__(self, pagina_id, parent=None):
+        super().__init__(parent)
+        self.pagina_id = pagina_id
+
+    def mousePressEvent(self, event: QMouseEvent):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._drag_start_pos = event.pos()
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event: QMouseEvent):
+        if not hasattr(self, "_drag_start_pos"):
+            return
+        if (event.pos() - self._drag_start_pos).manhattanLength() < QApplication.startDragDistance():
+            return
+
+        drag = QDrag(self)
+        mime = QMimeData()
+        mime.setText(self.pagina_id)  # envia o id da página
+        drag.setMimeData(mime)
+
+        # Mostra miniatura durante o drag
+        if isinstance(self.pixmap(), QPixmap):
+            drag.setPixmap(self.pixmap().scaled(150, 150, Qt.AspectRatioMode.KeepAspectRatio))
+        drag.exec(Qt.DropAction.MoveAction)
+
 
 class RenderizadorPaginas:
     def __init__(self, layout_central, lista_lateral, logica, scroll_area):
@@ -66,7 +101,7 @@ class RenderizadorPaginas:
         self.lista_lateral = lista_lateral            # QListWidget da lateral
         self.logica = logica                          # Lógica de manipulação de documentos
         self.scroll_area = scroll_area
-
+   
         # Zoom padrão
         self.zoom_por_doc = {}
         self.zoom_por_pagina = {}
@@ -83,6 +118,10 @@ class RenderizadorPaginas:
         # Sinal da lógica para atualizar quando documentos mudarem
         if hasattr(self.logica, "documentos_atualizados"):
             self.logica.documentos_atualizados.connect(self.renderizar_com_zoom_padrao)
+        #Drops
+        self.layout_central.parentWidget().setAcceptDrops(True)
+        self.layout_central.parentWidget().dragEnterEvent = self._drag_enter_event
+        self.layout_central.parentWidget().dropEvent = self._drop_event
 
 
    
@@ -133,6 +172,40 @@ class RenderizadorPaginas:
 
 
 
+    def _drag_enter_event(self, event):
+        if event.mimeData().hasText():
+            event.acceptProposedAction()
+
+    def _drop_event(self, event):
+        pagina_id = event.mimeData().text()
+        pos_y = event.position().y()  # posição vertical do drop
+
+        # calcula índice destino
+        widgets = [self.layout_central.itemAt(i).widget() for i in range(self.layout_central.count())]
+        for idx, w in enumerate(widgets):
+            if pos_y < w.y() + w.height() // 2:
+                destino_idx = idx
+                break
+        else:
+            destino_idx = len(widgets)
+
+        self._reordenar_pagina(pagina_id, destino_idx)
+        event.acceptProposedAction()
+
+    def _reordenar_pagina(self, pagina_id, destino_idx):
+        # Remove do layout
+        w = self.paginas_widgets[pagina_id]
+        self.layout_central.removeWidget(w)
+        # Insere no índice correto
+        self.layout_central.insertWidget(destino_idx, w)
+
+        # Atualiza a lista interna de páginas do documento
+        doc = G.PAGINAS[pagina_id]["doc_original"]
+        G.DOCUMENTOS[doc]["paginas"].remove(pagina_id)
+        G.DOCUMENTOS[doc]["paginas"].insert(destino_idx, pagina_id)
+
+        # Atualiza a lista lateral
+        self.renderizar_com_zoom_padrao()
 
 
 
@@ -278,12 +351,13 @@ class RenderizadorPaginas:
             page_layout.setSpacing(0)
 
             # Label da imagem
-            label_pixmap = QLabel()
+            label_pixmap = DraggableLabel(pagina_id)
             label_pixmap.setObjectName("page_image_label")
             label_pixmap.setPixmap(pixmap)
             label_pixmap.setAlignment(Qt.AlignmentFlag.AlignCenter)
             label_pixmap.setScaledContents(False)
             label_pixmap.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+
 
             # Contêiner que vai alinhar imagem e botões
             container = QWidget()
@@ -397,10 +471,34 @@ class RenderizadorPaginas:
         item_widget.setLayout(item_layout)
 
         item_list = QListWidgetItem()
-        item_list.setFlags(Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled)  # ✅ importante
+        item_list.setFlags(Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled)
         self.lista_lateral.addItem(item_list)
         self.lista_lateral.setItemWidget(item_list, item_widget)
         item_list.setData(1000, {"tipo":"pagina", "pagina_id": pagina_id})
+
+    def atualizar_item_lateral(self, pagina_id, nova_descricao=None):
+        # Procura o item correspondente
+        for i in range(self.lista_lateral.count()):
+            item = self.lista_lateral.item(i)
+            data = item.data(1000)
+            if data and data.get("tipo") == "pagina" and data.get("pagina_id") == pagina_id:
+                # Atualiza descrição, se necessário
+                if nova_descricao:
+                    widget = self.lista_lateral.itemWidget(item)
+                    if widget:
+                        lbl = widget.findChild(QLabel)
+                        if lbl:
+                            lbl.setText(nova_descricao)
+                return
+    def mover_item_lateral(self, pagina_id, destino_idx):
+        # Encontra o item
+        for i in range(self.lista_lateral.count()):
+            item = self.lista_lateral.item(i)
+            data = item.data(1000)
+            if data and data.get("tipo") == "pagina" and data.get("pagina_id") == pagina_id:
+                self.lista_lateral.takeItem(i)  # Remove
+                self.lista_lateral.insertItem(destino_idx, item)  # Insere no novo índice
+                return
 
 
     
@@ -610,15 +708,16 @@ class RenderizadorPaginas:
             lambda: self._finalizar_mover_e_atualizar(nome_doc, idx, direcao)
         )
     def _finalizar_mover_e_atualizar(self, nome_doc, idx, direcao):
-        """Executado após a animação de mover terminar."""
-        print("✅ CHEGOU NO FINALIZAR MOVER")
         if direcao == "cima":
             self.logica.mover_para_cima(nome_doc, idx)
+            novo_idx = idx - 1
         else:
             self.logica.mover_para_baixo(nome_doc, idx)
+            novo_idx = idx + 1
 
-        self.renderizar_com_zoom_padrao()
-        self.lista_lateral.window().atualizar_tamanho_paginas()
+        pagina_id = G.DOCUMENTOS[nome_doc]["paginas"][novo_idx]
+        self.mover_item_lateral(pagina_id, novo_idx)
+
 
 
     # ---------------------------------------------------------------
