@@ -1,23 +1,23 @@
+# ...existing code...
 from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QListWidgetItem, QSizePolicy, QDialog, QComboBox, QMessageBox,
-    QScrollArea, QFrame, QGraphicsOpacityEffect
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QSizePolicy,
+    QDialog, QComboBox, QMessageBox, QScrollArea, QFrame, QGraphicsOpacityEffect,
+    QTreeWidget, QTreeWidgetItem, QInputDialog, QApplication
 )
-from PyQt6.QtGui import QPixmap, QImage, QIcon
-from PyQt6.QtCore import Qt, QPropertyAnimation, QEasingCurve, QPoint, QRect, QSize
-from PyQt6.QtCore import QSize
+from PyQt6.QtGui import QPixmap, QImage, QIcon, QDrag, QMouseEvent
+from PyQt6.QtCore import (
+    Qt, QPropertyAnimation, QEasingCurve, QPoint, QRect, QSize, QByteArray,
+    QMimeData, QObject, QEvent
+)
 import fitz  # PyMuPDF
 import os
 import globais as G
+from signals import signals as AppSignals
 
 def abreviar_titulo(nome, limite=22):
     if len(nome) > limite:
         return nome[:limite - 3] + "..."
     return nome
-
-
-
-from PyQt6.QtCore import QObject, Qt, QEvent
 
 class ArrastarScrollFilter(QObject):
     def __init__(self, scroll_area):
@@ -31,35 +31,16 @@ class ArrastarScrollFilter(QObject):
             self.arrastando = True
             self.ultimo_ponto = event.pos()
             return True
-
         elif event.type() == QEvent.Type.MouseMove and self.arrastando:
             delta = event.pos() - self.ultimo_ponto
             self.scroll.horizontalScrollBar().setValue(self.scroll.horizontalScrollBar().value() - delta.x())
             self.scroll.verticalScrollBar().setValue(self.scroll.verticalScrollBar().value() - delta.y())
             self.ultimo_ponto = event.pos()
             return True
-
         elif event.type() == QEvent.Type.MouseButtonRelease and event.button() == Qt.MouseButton.RightButton:
             self.arrastando = False
             return True
-
         return False
-    
-def mousePressEvent(self, e):
-    if e.button() == Qt.MouseButton.LeftButton:  # arrasta widgets
-        self._arrastando = True
-        self._pos_inicial = e.pos()
-        if self.on_select:
-            self.on_select(self.pagina_id)
-    elif e.button() == Qt.MouseButton.RightButton:
-        e.ignore()  # deixa o filtro de scroll cuidar disso
-
-
-
-from PyQt6.QtWidgets import QLabel
-from PyQt6.QtGui import QDrag, QMouseEvent, QPixmap
-from PyQt6.QtCore import Qt, QByteArray, QMimeData
-from PyQt6.QtWidgets import QApplication
 
 class DraggableLabel(QLabel):
     def __init__(self, pagina_id, parent=None):
@@ -76,101 +57,100 @@ class DraggableLabel(QLabel):
             return
         if (event.pos() - self._drag_start_pos).manhattanLength() < QApplication.startDragDistance():
             return
-
         drag = QDrag(self)
         mime = QMimeData()
-        mime.setText(self.pagina_id)  # envia o id da página
+        mime.setText(str(self.pagina_id))
         drag.setMimeData(mime)
-
-        # Mostra miniatura durante o drag
         if isinstance(self.pixmap(), QPixmap):
             drag.setPixmap(self.pixmap().scaled(150, 150, Qt.AspectRatioMode.KeepAspectRatio))
         drag.exec(Qt.DropAction.MoveAction)
 
-
 class RenderizadorPaginas:
     def __init__(self, layout_central, lista_lateral, logica, scroll_area):
         self.bloquear_render = False
-
-        ICONS_PATH = G.ICONS_PATH
+        ICONS_PATH = getattr(G, "ICONS_PATH", "icons")
         super().__init__()
 
-        
-        # ---------------- Atributos principais ----------------
-        self.layout_central = layout_central          # QVBoxLayout onde ficam as páginas
-        self.lista_lateral = lista_lateral            # QListWidget da lateral
-        self.logica = logica                          # Lógica de manipulação de documentos
+        # principais
+        self.layout_central = layout_central
+        self.lista_lateral = lista_lateral
+        self.logica = logica
         self.scroll_area = scroll_area
-   
-        # Zoom padrão
+
         self.zoom_por_doc = {}
-        self.zoom_por_pagina = {}
         self.pixmaps_originais = {}
         self.paginas_widgets = {}
         self.zoom_factor = getattr(G, "ZOOM_PADRAO", 1.0)
-
-        # Callback para atualizar lista lateral (pode ser definido externamente)
         self.atualizar_lista_callback = None
 
-        # Conecta clique na lista lateral
+        # conectar seleção na árvore
         self.lista_lateral.itemClicked.connect(self.ir_para_pagina)
 
-        # Sinal da lógica para atualizar quando documentos mudarem
+        # conecta sinal da própria lógica (se houver) e o sinal global
         if hasattr(self.logica, "documentos_atualizados"):
-            self.logica.documentos_atualizados.connect(self.renderizar_com_zoom_padrao)
-        #Drops
-        self.layout_central.parentWidget().setAcceptDrops(True)
-        self.layout_central.parentWidget().dragEnterEvent = self._drag_enter_event
-        self.layout_central.parentWidget().dropEvent = self._drop_event
+            try:
+                self.logica.documentos_atualizados.connect(self.renderizar_com_zoom_padrao)
+            except Exception:
+                pass
+        try:
+            AppSignals.documentos_atualizados.connect(self.renderizar_com_zoom_padrao)
+        except Exception:
+            pass
 
+        parent_w = self.layout_central.parentWidget()
+        if parent_w is not None:
+            parent_w.setAcceptDrops(True)
+            parent_w.dragEnterEvent = self._drag_enter_event
+            parent_w.dropEvent = self._drop_event
 
-   
-
-    # ------------------------ Renderização segura ------------------------
+    # Renderização principal
     def renderizar_com_zoom_padrao(self):
         """
-        Atualiza toda a interface com o zoom atual, 
+        Atualiza toda a interface com o zoom atual,
         recriando widgets e a lista lateral, respeitando a ordem em G.DOCUMENTOS.
         """
         if getattr(self, "bloquear_render", False):
-            return  # evita loop de sinais
+            return
 
-        # Primeiro limpa layout e lista lateral
-        while self.layout_central.count():
-            item = self.layout_central.takeAt(0)
-            widget = item.widget()
-            if widget:
-                widget.setParent(None)
-                widget.deleteLater()
-        self.lista_lateral.clear()
+        # captura estados de expansão atuais da árvore lateral para restaurar depois
+        expanded_states = {}
+        try:
+            for i in range(self.lista_lateral.topLevelItemCount()):
+                item = self.lista_lateral.topLevelItem(i)
+                if item is not None:
+                    expanded_states[item.text(0)] = item.isExpanded()
+        except Exception:
+            expanded_states = {}
 
-        # Limpa caches internos
-        self.paginas_widgets.clear()
-        self.pixmaps_originais.clear()
+        self.limpar_layout()
 
-        # Renderiza todos os documentos e páginas na ordem atual
         for nome_doc, dados in G.DOCUMENTOS.items():
             self._adicionar_cabecalho_doc(nome_doc)
             for idx, pagina_id in enumerate(dados["paginas"]):
-                pagina_info = G.PAGINAS[pagina_id]
-                doc_origem = pagina_info["doc_original"]
-                doc_real = G.DOCUMENTOS[doc_origem]["doc"]
-                pagina_num_origem = pagina_info["fitz_index"]
-                pagina = doc_real.load_page(pagina_num_origem)
-
-                # Cria pixmap com zoom atual
-                zoom = self.zoom_por_doc.get(doc_origem, G.ZOOM_PADRAO)
-                pix = pagina.get_pixmap(matrix=fitz.Matrix(zoom, zoom))
-                img = QImage(pix.samples, pix.width, pix.height, pix.stride, QImage.Format.Format_RGB888)
-                pixmap = QPixmap.fromImage(img)
-
-                # Adiciona widget da página
+                # determina zoom para este documento (padrão ou específico)
+                zoom = self.zoom_por_doc.get(nome_doc, getattr(G, "ZOOM_PADRAO", 1.0))
                 self._adicionar_pagina(nome_doc, idx, pagina_id, zoom)
 
-        # Atualiza tamanho das páginas
-        self.lista_lateral.window().atualizar_tamanho_paginas()
+        # Atualiza tamanho das páginas na janela principal (se existir)
+        win = self.lista_lateral.window()
+        if hasattr(win, "atualizar_tamanho_paginas"):
+            try:
+                win.atualizar_tamanho_paginas()
+            except Exception:
+                pass
 
+        # grava os estados de expansão no objeto janela (TelaPrincipal) para que ela restaure
+        try:
+            if win is not None and isinstance(expanded_states, dict):
+                setattr(win, "_expanded_states", expanded_states)
+        except Exception:
+            pass
 
+        # garante que quem quiser escute essa mudança
+        try:
+            AppSignals.layout_update_requested.emit()
+        except Exception:
+            pass
 
     def _drag_enter_event(self, event):
         if event.mimeData().hasText():
@@ -178,179 +158,116 @@ class RenderizadorPaginas:
 
     def _drop_event(self, event):
         pagina_id = event.mimeData().text()
-        pos_y = event.position().y()  # posição vertical do drop
-
-        # calcula índice destino
-        widgets = [self.layout_central.itemAt(i).widget() for i in range(self.layout_central.count())]
+        # coleta widgets válidos
+        widgets = []
+        for i in range(self.layout_central.count()):
+            it = self.layout_central.itemAt(i)
+            if not it:
+                continue
+            w = it.widget()
+            if w is None:
+                continue
+            widgets.append(w)
+        pos_y = event.position().y()
+        destino_idx = len(widgets)
         for idx, w in enumerate(widgets):
             if pos_y < w.y() + w.height() // 2:
                 destino_idx = idx
                 break
-        else:
-            destino_idx = len(widgets)
-
         self._reordenar_pagina(pagina_id, destino_idx)
         event.acceptProposedAction()
 
     def _reordenar_pagina(self, pagina_id, destino_idx):
-        # Remove do layout
+        if pagina_id not in self.paginas_widgets:
+            return
         w = self.paginas_widgets[pagina_id]
         self.layout_central.removeWidget(w)
-        # Insere no índice correto
         self.layout_central.insertWidget(destino_idx, w)
-
-        # Atualiza a lista interna de páginas do documento
         doc = G.PAGINAS[pagina_id]["doc_original"]
-        G.DOCUMENTOS[doc]["paginas"].remove(pagina_id)
+        if pagina_id in G.DOCUMENTOS[doc]["paginas"]:
+            G.DOCUMENTOS[doc]["paginas"].remove(pagina_id)
         G.DOCUMENTOS[doc]["paginas"].insert(destino_idx, pagina_id)
-
-        # Atualiza a lista lateral
         self.renderizar_com_zoom_padrao()
-
-
-
 
     def renderizar_todas(self, zoom=None):
         if zoom is None:
             zoom = self.zoom_factor
-
         self.limpar_layout()
         self.ajustar_largura_lista()
-        self.criar_barra_zoom() 
+        self.criar_barra_zoom()
         for nome_doc, dados in G.DOCUMENTOS.items():
             self._adicionar_cabecalho_doc(nome_doc)
             for idx, pagina_id in enumerate(dados["paginas"]):
                 self._adicionar_pagina(nome_doc, idx, pagina_id, zoom)
 
-
-    # ------------------------------
-    # Funções internas
-    # ------------------------------
-    # Na classe RenderizadorPaginas
-
     def limpar_layout(self):
-        # 1. Limpa layout central (onde as páginas são exibidas)
         while self.layout_central.count():
             item = self.layout_central.takeAt(0)
             widget = item.widget()
             if widget is not None:
                 widget.setParent(None)
                 widget.deleteLater()
-                
-        # 2. Limpa lista lateral
         self.lista_lateral.clear()
-        
-        # 3. Limpa caches internos (essencial!)
         self.paginas_widgets.clear()
         self.pixmaps_originais.clear()
 
     def ajustar_largura_lista(self):
-        # Ajusta largura mínima da lista conforme o maior botão
-        max_width = 100  # pode parametrizar se quiser
+        max_width = 100
         self.lista_lateral.setMinimumWidth(max_width + 20)
         self.lista_lateral.setSizePolicy(QSizePolicy.Policy.MinimumExpanding, QSizePolicy.Policy.Expanding)
 
     def _adicionar_cabecalho_doc(self, nome_doc):
-
-
         header_widget = QWidget()
         header_layout = QHBoxLayout(header_widget)
-        header_layout.setContentsMargins(2,2,2,2)
+        header_layout.setContentsMargins(2, 2, 2, 2)
         header_layout.setSpacing(5)
 
-        # Ícone do documento
         icone = QLabel()
-        pixmap = QPixmap(f"{G.ICONS_PATH}/file.svg").scaled(16, 16, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+        pixmap = QPixmap(f"{getattr(G, 'ICONS_PATH', 'icons')}/file.svg").scaled(16, 16, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
         icone.setPixmap(pixmap)
         header_layout.addWidget(icone)
 
-        # Nome do documento
         nome, _ = os.path.splitext(nome_doc)
         lbl_doc = QLabel(f"{abreviar_titulo(nome, limite=22)}")
         lbl_doc.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         header_layout.addWidget(lbl_doc)
 
-    # Botão Salvar
         btn_salvar = QPushButton()
-        btn_salvar.setIcon(QIcon(f"{G.ICONS_PATH}/save-all.svg"))
+        btn_salvar.setIcon(QIcon(f"{getattr(G, 'ICONS_PATH', 'icons')}/save-all.svg"))
         btn_salvar.setMaximumWidth(100)
-        btn_salvar.setStyleSheet("""
-            QPushButton {
-                background-color: #4CAF50; 
-                border-radius: 5px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #45a049;
-            }
-        """)
         btn_salvar.clicked.connect(lambda _, d=nome_doc: self.logica.salvar_documento_dialog(self.lista_lateral.window(), d))
         header_layout.addWidget(btn_salvar)
 
-        # Botão Apagar
         btn_apagar = QPushButton()
-        btn_apagar.setIcon(QIcon(f"{G.ICONS_PATH}/file-x.svg"))
+        btn_apagar.setIcon(QIcon(f"{getattr(G, 'ICONS_PATH', 'icons')}/file-x.svg"))
         btn_apagar.setMaximumWidth(100)
-        btn_apagar.setStyleSheet("""
-            QPushButton {
-                background-color: #f44336; 
-                border-radius: 5px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #da190b;
-            }
-        """)
         btn_apagar.clicked.connect(lambda _, d=nome_doc: self.logica.excluir_documento(self.lista_lateral.window(), d))
         header_layout.addWidget(btn_apagar)
 
-        # Adiciona à lista lateral
-        header_item = QListWidgetItem()
-        header_item.setSizeHint(header_widget.sizeHint())
-        header_item.setFlags(Qt.ItemFlag.ItemIsEnabled)  # cabeçalho não selecionável
-        header_item.setData(1000, {"tipo":"doc", "nome_doc": nome_doc})
-        self.lista_lateral.addItem(header_item)
-        self.lista_lateral.setItemWidget(header_item, header_widget)
-
-
+        # adiciona item de topo na árvore
+        doc_item = QTreeWidgetItem([nome_doc])
+        doc_item.setData(0, Qt.ItemDataRole.UserRole, {"tipo": "doc", "nome_doc": nome_doc})
+        self.lista_lateral.addTopLevelItem(doc_item)
+        self.lista_lateral.setItemWidget(doc_item, 0, header_widget)
 
     def _adicionar_pagina(self, nome_doc, idx, pagina_id, zoom):
         pagina_info = G.PAGINAS[pagina_id]
-        # ----------------------------------------------------
-        # 💥 PRINTS DE DEBUG DA ORDEM E DA ORIGEM
-        # ----------------------------------------------------
-        if idx == 0:
-            print("\n--- INÍCIO DO DOCUMENTO ---")
-            print(f"DEBUG: Documento sendo processado (Destino/Lista de Ordem): {nome_doc}")
-            print(f"DEBUG: Lista de ordem atual: {G.DOCUMENTOS[nome_doc]['paginas']}")
-        
-        # 1. Qual é o documento REAL que contém o conteúdo desta página?
         nome_doc_origem = pagina_info["doc_original"]
-        
-        # 2. Pega o objeto fitz.Document REAL usando o nome da origem.
         doc_real = G.DOCUMENTOS[nome_doc_origem]["doc"]
-        
-        # 3. Carrega a página usando o objeto doc_real e o índice original.
         pagina_num_origem = pagina_info["fitz_index"]
         pagina = doc_real.load_page(pagina_num_origem)
-        
-        print(f"--> Carregando '{pagina_id}' (Lista Pág. {idx}): Conteúdo está em '{nome_doc_origem}' na Pág. {pagina_num_origem}")
-    
-    # ----------------------------------------------------
-        
         try:
             pix = pagina.get_pixmap(matrix=fitz.Matrix(zoom, zoom))
             img = QImage(pix.samples, pix.width, pix.height, pix.stride, QImage.Format.Format_RGB888)
             pixmap = QPixmap.fromImage(img)
+            self.pixmaps_originais[pagina_id] = pixmap
 
-            # Widget da página
             page_widget = QWidget()
-            page_widget.setStyleSheet("background-color: #222; border-radius: 6px;")  # estilo visual
+            page_widget.setStyleSheet("background-color: #222; border-radius: 6px;")
             page_layout = QHBoxLayout(page_widget)
             page_layout.setContentsMargins(10, 10, 10, 10)
             page_layout.setSpacing(0)
 
-            # Label da imagem
             label_pixmap = DraggableLabel(pagina_id)
             label_pixmap.setObjectName("page_image_label")
             label_pixmap.setPixmap(pixmap)
@@ -358,14 +275,11 @@ class RenderizadorPaginas:
             label_pixmap.setScaledContents(False)
             label_pixmap.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
-
-            # Contêiner que vai alinhar imagem e botões
             container = QWidget()
             container_layout = QHBoxLayout(container)
             container_layout.setContentsMargins(0, 0, 0, 0)
             container_layout.addWidget(label_pixmap)
 
-            # Botões fixos no lado direito da página
             btn_container = QWidget()
             btn_container.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
             btn_layout = QVBoxLayout(btn_container)
@@ -373,308 +287,237 @@ class RenderizadorPaginas:
             btn_layout.setSpacing(5)
             btn_layout.addStretch()
 
-            # Botões fixos no lado direito da página
-            btn_container = QWidget()
-            btn_container.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
-            btn_layout = QVBoxLayout(btn_container)
-            btn_layout.setContentsMargins(0, 0, 0, 0)
-            btn_layout.setSpacing(5)
-            btn_layout.addStretch()
-
-            # Botão transferir
             btn_transferir = QPushButton()
-            btn_transferir.setIcon(QIcon(f"{G.ICONS_PATH}/git-compare-arrows.svg"))
+            btn_transferir.setIcon(QIcon(f"{getattr(G, 'ICONS_PATH', 'icons')}/git-compare-arrows.svg"))
             btn_transferir.setFixedSize(30, 30)
-     
             btn_transferir.clicked.connect(lambda _, pid=pagina_id: self.transferir_pagina(pid))
             btn_layout.addWidget(btn_transferir, alignment=Qt.AlignmentFlag.AlignHCenter)
 
-            # Botão mover para cima
             if idx > 0:
                 btn_up = QPushButton()
-                btn_up.setIcon(QIcon(f"{G.ICONS_PATH}/move-up.svg"))
+                btn_up.setIcon(QIcon(f"{getattr(G, 'ICONS_PATH', 'icons')}/move-up.svg"))
                 btn_up.setFixedSize(30, 30)
-    
                 btn_up.clicked.connect(lambda _, d=nome_doc, i=idx: self._mover_e_atualizar(d, i, "cima"))
                 btn_layout.addWidget(btn_up, alignment=Qt.AlignmentFlag.AlignHCenter)
 
-            # Botão mover para baixo
             if idx < len(G.DOCUMENTOS[nome_doc]["paginas"]) - 1:
                 btn_down = QPushButton()
-                btn_down.setIcon(QIcon(f"{G.ICONS_PATH}/move-down.svg"))
+                btn_down.setIcon(QIcon(f"{getattr(G, 'ICONS_PATH', 'icons')}/move-down.svg"))
                 btn_down.setFixedSize(30, 30)
-              
                 btn_down.clicked.connect(lambda _, d=nome_doc, i=idx: self._mover_e_atualizar(d, i, "baixo"))
                 btn_layout.addWidget(btn_down, alignment=Qt.AlignmentFlag.AlignHCenter)
 
-            # Botão delete
             btn_del = QPushButton()
-            btn_del.setIcon(QIcon(f"{G.ICONS_PATH}/delete.svg"))
+            btn_del.setIcon(QIcon(f"{getattr(G, 'ICONS_PATH', 'icons')}/delete.svg"))
             btn_del.setFixedSize(30, 30)
-            btn_del.setStyleSheet("""
-                QPushButton {
-                    background-color: #f44336; 
-                    color: #fff; /* ícone branco */
-                    font-weight: bold; 
-                    border-radius: 5px;
-                    border: none;
-                }
-                QPushButton:hover {
-                    background-color: #da190b;
-                }
-            """)
             btn_del.clicked.connect(lambda _, d=nome_doc, i=idx: self._excluir_e_atualizar(d, i))
             btn_layout.addWidget(btn_del, alignment=Qt.AlignmentFlag.AlignHCenter)
             btn_layout.addStretch()
 
-
-
-            # Os botões ficam sempre "grudados" à direita da imagem
             container_layout.addWidget(btn_container, alignment=Qt.AlignmentFlag.AlignVCenter)
             page_layout.addWidget(container)
 
-            # Permitir zoom com scroll do mouse
             label_pixmap.wheelEvent = lambda event, pid=pagina_id: self._zoom_documento(pid, event.angleDelta().y(), event)
 
-
-
-            # Adiciona widget ao layout central
             self.layout_central.addWidget(page_widget)
             self.paginas_widgets[pagina_id] = page_widget
-            self.pixmaps_originais[pagina_id] = pixmap
 
-            # Item lateral
-            self._adicionar_item_lateral(pagina_id, pagina_info["descricao"])
-
+            # Insere como filho do item de documento na árvore lateral
+            doc_item = self._buscar_item_documento(nome_doc)
+            if doc_item:
+                self._adicionar_item_lateral(pagina_id, pagina_info.get("descricao", ""), doc_item)
         except Exception as e:
             print(f"Erro ao renderizar página {pagina_id}: {e}")
 
-    def _adicionar_item_lateral(self, pagina_id, descricao):
-        from PyQt6.QtWidgets import QHBoxLayout, QWidget, QComboBox, QPushButton, QLabel, QListWidgetItem
-        
+    def _buscar_item_documento(self, nome_doc):
+        for i in range(self.lista_lateral.topLevelItemCount()):
+            item = self.lista_lateral.topLevelItem(i)
+            dados = item.data(0, Qt.ItemDataRole.UserRole)
+            if dados and dados.get("nome_doc") == nome_doc:
+                return item
+        return None
+
+    def _adicionar_item_lateral(self, pagina_id, descricao, doc_item: QTreeWidgetItem):
+        pagina_item = QTreeWidgetItem(doc_item)
+        pagina_item.setData(0, Qt.ItemDataRole.UserRole, {"tipo": "pagina", "pagina_id": pagina_id})
+
         item_widget = QWidget()
         item_layout = QHBoxLayout(item_widget)
-        item_layout.setContentsMargins(2,2,2,2)
+        item_layout.setContentsMargins(2, 2, 2, 2)
         item_layout.setSpacing(5)
 
         lbl_item = QLabel(descricao)
-        lbl_item.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         lbl_item.setWordWrap(True)
+        lbl_item.setStyleSheet("color: white;")
         item_layout.addWidget(lbl_item)
 
-        btn_lista_mover = QPushButton()
-        btn_lista_mover.setIcon(QIcon(f"{G.ICONS_PATH}/git-compare-arrows.svg"))
-        btn_lista_mover.setMaximumWidth(30)
-        btn_lista_mover.clicked.connect(lambda _, pid=pagina_id: self.transferir_pagina(pid))
-        item_layout.addWidget(btn_lista_mover)
+        btn_transferir = QPushButton()
+        btn_transferir.setIcon(QIcon(f"{getattr(G, 'ICONS_PATH', 'icons')}/git-compare-arrows.svg"))
+        btn_transferir.setMaximumWidth(30)
 
+        def abrir_dialog_transferencia():
+            dialog = QDialog(self.lista_lateral.window())
+            dialog.setWindowTitle("Escolha o documento destino")
+            layout = QVBoxLayout(dialog)
+            combo = QComboBox()
+            doc_atual = G.PAGINAS[pagina_id]["doc_original"]
+            destinos = [nome for nome in G.DOCUMENTOS.keys() if nome != doc_atual]
+            combo.addItems(destinos)
+            layout.addWidget(combo)
+            btn_ok = QPushButton("Mover")
+            layout.addWidget(btn_ok)
+            def mover():
+                destino = combo.currentText()
+                if destino:
+                    self.logica.moverPagina(pagina_id, destino)
+                    dialog.accept()
+            btn_ok.clicked.connect(mover)
+            dialog.exec()
+
+        btn_transferir.clicked.connect(abrir_dialog_transferencia)
+        item_layout.addWidget(btn_transferir)
         item_widget.setLayout(item_layout)
-
-        item_list = QListWidgetItem()
-        item_list.setFlags(Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled)
-        self.lista_lateral.addItem(item_list)
-        self.lista_lateral.setItemWidget(item_list, item_widget)
-        item_list.setData(1000, {"tipo":"pagina", "pagina_id": pagina_id})
+        self.lista_lateral.setItemWidget(pagina_item, 0, item_widget)
+        return pagina_item
 
     def atualizar_item_lateral(self, pagina_id, nova_descricao=None):
-        # Procura o item correspondente
-        for i in range(self.lista_lateral.count()):
-            item = self.lista_lateral.item(i)
-            data = item.data(1000)
-            if data and data.get("tipo") == "pagina" and data.get("pagina_id") == pagina_id:
-                # Atualiza descrição, se necessário
-                if nova_descricao:
-                    widget = self.lista_lateral.itemWidget(item)
-                    if widget:
-                        lbl = widget.findChild(QLabel)
-                        if lbl:
-                            lbl.setText(nova_descricao)
-                return
+        for i in range(self.lista_lateral.topLevelItemCount()):
+            doc_item = self.lista_lateral.topLevelItem(i)
+            for j in range(doc_item.childCount()):
+                pagina_item = doc_item.child(j)
+                data = pagina_item.data(0, Qt.ItemDataRole.UserRole)
+                if data and data.get("tipo") == "pagina" and data.get("pagina_id") == pagina_id:
+                    if nova_descricao:
+                        widget = self.lista_lateral.itemWidget(pagina_item, 0)
+                        if widget:
+                            lbls = widget.findChildren(QLabel)
+                            if lbls:
+                                lbls[0].setText(nova_descricao)
+                    return
+
     def mover_item_lateral(self, pagina_id, destino_idx):
-        # Encontra o item
-        for i in range(self.lista_lateral.count()):
-            item = self.lista_lateral.item(i)
-            data = item.data(1000)
-            if data and data.get("tipo") == "pagina" and data.get("pagina_id") == pagina_id:
-                self.lista_lateral.takeItem(i)  # Remove
-                self.lista_lateral.insertItem(destino_idx, item)  # Insere no novo índice
-                return
-
-
-    
+        for i in range(self.lista_lateral.topLevelItemCount()):
+            doc_item = self.lista_lateral.topLevelItem(i)
+            for j in range(doc_item.childCount()):
+                pagina_item = doc_item.child(j)
+                data = pagina_item.data(0, Qt.ItemDataRole.UserRole)
+                if data and data.get("tipo") == "pagina" and data.get("pagina_id") == pagina_id:
+                    doc_item.takeChild(j)
+                    doc_item.insertChild(destino_idx, pagina_item)
+                    return
 
     def transferir_pagina(self, pagina_id):
-        """
-        Abre um diálogo para o usuário selecionar o documento de destino
-        e chama a lógica para mover a página.
-        """
-        # 💥 CORREÇÃO: Acessa os dados globais G.PAGINAS e G.DOCUMENTOS
         origem = G.PAGINAS[pagina_id]["doc_original"]
         outros_docs = [n for n in G.DOCUMENTOS.keys() if n != origem]
-        
         if not outros_docs:
             QMessageBox.information(None, "Transferir Página", "Nenhum outro documento aberto para transferir.")
             return
-
-        # O DIÁLOGO (QDialog)
-        # ⚠️ Certifique-se de que a classe RenderizadorPaginas herda de QWidget 
-        # ou QObject e tem uma referência à janela principal (self),
-        # ou use 'None' para o parent do QDialog.
-        dialog = QDialog(self.lista_lateral.window()) # Use a janela principal como parent
+        dialog = QDialog(self.lista_lateral.window())
         dialog.setWindowTitle("Selecionar documento destino")
         layout = QVBoxLayout(dialog)
         layout.addWidget(QLabel("Enviar página para:"))
-
         combo = QComboBox()
         combo.addItems(outros_docs)
         layout.addWidget(combo)
-
         btn_ok = QPushButton("OK")
         btn_ok.clicked.connect(dialog.accept)
         layout.addWidget(btn_ok)
-
         if dialog.exec() == QDialog.DialogCode.Accepted:
             destino = combo.currentText()
             self.logica.moverPagina(pagina_id, destino)
             self.renderizar_com_zoom_padrao()
-            self.lista_lateral.window().atualizar_tamanho_paginas()
-    def ir_para_pagina(self, item):
-        data = item.data(1000)
+            win = self.lista_lateral.window()
+            if hasattr(win, "atualizar_tamanho_paginas"):
+                win.atualizar_tamanho_paginas()
+
+    def ir_para_pagina(self, item, column=0):
+        data = item.data(0, Qt.ItemDataRole.UserRole)
         if data is None:
             return
-
-        if data["tipo"] == "pagina":
-            # Scroll direto e mostra apenas o documento desta página
+        if data.get("tipo") == "pagina":
             pagina_id = data["pagina_id"]
             doc_origem = G.PAGINAS[pagina_id]["doc_original"]
-
-            # Oculta todas as páginas que não pertencem ao mesmo documento
             for pid, widget in self.paginas_widgets.items():
                 widget.setVisible(G.PAGINAS[pid]["doc_original"] == doc_origem)
-
-            # Scroll até a página
             widget = self.paginas_widgets.get(pagina_id)
             if widget:
                 self.scroll_area.ensureWidgetVisible(widget)
-
-        elif data["tipo"] == "doc":
-            # Scroll direto para a primeira página do documento e mostra apenas este documento
+        elif data.get("tipo") == "doc":
             nome_doc = data["nome_doc"]
-
-            # Mostra somente páginas deste documento
             for pid, widget in self.paginas_widgets.items():
                 widget.setVisible(G.PAGINAS[pid]["doc_original"] == nome_doc)
-
-            # Scroll para a primeira página visível
             for pid, widget in self.paginas_widgets.items():
                 if widget.isVisible():
                     self.scroll_area.ensureWidgetVisible(widget)
                     break
 
     def mostrar_pagina_unica(self, pagina_id):
-        """
-        Oculta todas as páginas e mostra apenas a página especificada.
-        """
         for pid, widget in self.paginas_widgets.items():
             widget.setVisible(pid == pagina_id)
-        
-        # Scroll para a página
         widget = self.paginas_widgets.get(pagina_id)
         if widget:
             self.scroll_area.ensureWidgetVisible(widget)
+
     def mostrar_paginas_documento(self, nome_doc):
-        """
-        Mostra apenas as páginas do documento 'nome_doc' e oculta as demais.
-        """
         for pagina_id, widget in self.paginas_widgets.items():
-            doc_origem = G.PAGINAS[pagina_id]["doc_original"]
-            widget.setVisible(doc_origem == nome_doc)
-        
-        # Scroll para a primeira página do documento
+            widget.setVisible(G.PAGINAS[pagina_id]["doc_original"] == nome_doc)
         for pagina_id, widget in self.paginas_widgets.items():
             if widget.isVisible():
                 self.scroll_area.ensureWidgetVisible(widget)
                 break
 
-    # ---------------------------------------------------------------
-    # 🔄 ANIMAÇÃO DE TROCA DE PÁGINA
-    # ---------------------------------------------------------------
     def _animar_troca_pagina(self, nome_doc, idx, direcao, callback):
-        """Anima a troca de posição entre páginas antes de atualizar a lógica."""
         paginas = G.DOCUMENTOS[nome_doc]["paginas"]
         novo_idx = idx + direcao
-
         if not (0 <= novo_idx < len(paginas)):
-            return  # fora dos limites
-
+            return
         pid_atual = paginas[idx]
         pid_destino = paginas[novo_idx]
-
         w_atual = self.paginas_widgets[pid_atual]
         w_destino = self.paginas_widgets[pid_destino]
-
-        # Movimento vertical entre as posições
         deslocamento = w_destino.geometry().top() - w_atual.geometry().top()
-
         anim = QPropertyAnimation(w_atual, b"pos")
         anim.setDuration(500)
         anim.setStartValue(w_atual.pos())
         anim.setEndValue(w_atual.pos() + QPoint(0, deslocamento))
         anim.setEasingCurve(QEasingCurve.Type.InOutCubic)
-
-        # Efeito de leve "fade" na página destino
         fade_dest = QGraphicsOpacityEffect(w_destino)
         w_destino.setGraphicsEffect(fade_dest)
-
         fade = QPropertyAnimation(fade_dest, b"opacity")
         fade.setDuration(400)
         fade.setStartValue(1)
         fade.setEndValue(0.4)
         fade.setEasingCurve(QEasingCurve.Type.InOutQuad)
-
         fade_back = QPropertyAnimation(fade_dest, b"opacity")
         fade_back.setDuration(400)
         fade_back.setStartValue(0.4)
         fade_back.setEndValue(1)
         fade_back.setEasingCurve(QEasingCurve.Type.InOutQuad)
-
-        # Quando a animação terminar → executa o callback lógico
         def finalizar():
             w_destino.setGraphicsEffect(None)
-            callback()  # executa a lógica real (mover e atualizar)
-
+            callback()
         anim.finished.connect(lambda: fade_back.start())
         fade_back.finished.connect(finalizar)
-
         fade.start()
         anim.start()
-
-        # Guarda referências pra evitar garbage collection
         self.anim_troca = [anim, fade, fade_back]
 
-    # ---------------------------------------------------------------
-    # ❌ ANIMAÇÃO DE REMOÇÃO DE PÁGINA
-    # ---------------------------------------------------------------
     def _animar_remocao_pagina(self, nome_doc, idx, callback):
-        """Anima a remoção da página e depois executa a lógica."""
         paginas = G.DOCUMENTOS[nome_doc]["paginas"]
         if not (0 <= idx < len(paginas)):
             return
-
         pid = paginas[idx]
-        w = self.paginas_widgets[pid]
-
+        w = self.paginas_widgets.get(pid)
+        if w is None:
+            callback()
+            return
         efeito = QGraphicsOpacityEffect(w)
         w.setGraphicsEffect(efeito)
-
-        # Fade out
         fade = QPropertyAnimation(efeito, b"opacity")
         fade.setDuration(600)
         fade.setStartValue(1)
         fade.setEndValue(0)
         fade.setEasingCurve(QEasingCurve.Type.InOutCubic)
-
-        # Shrink
         shrink = QPropertyAnimation(w, b"geometry")
         shrink.setDuration(600)
         geom = w.geometry()
@@ -687,26 +530,18 @@ class RenderizadorPaginas:
         shrink.setStartValue(geom)
         shrink.setEndValue(final_geom)
         shrink.setEasingCurve(QEasingCurve.Type.InBack)
-
-        # Quando terminar → executa callback
         shrink.finished.connect(callback)
-
         fade.start()
         shrink.start()
-
         self.anim_remocao = [fade, shrink]
 
-    # ---------------------------------------------------------------
-    # 🔧 INTEGRAÇÃO COM SUAS FUNÇÕES EXISTENTES
-    # ---------------------------------------------------------------
-
     def _mover_e_atualizar(self, nome_doc, idx, direcao):
-        """Executa a animação e depois a lógica de troca."""
         self._animar_troca_pagina(
             nome_doc, idx,
             -1 if direcao == "cima" else +1,
             lambda: self._finalizar_mover_e_atualizar(nome_doc, idx, direcao)
         )
+
     def _finalizar_mover_e_atualizar(self, nome_doc, idx, direcao):
         if direcao == "cima":
             self.logica.mover_para_cima(nome_doc, idx)
@@ -715,14 +550,27 @@ class RenderizadorPaginas:
             self.logica.mover_para_baixo(nome_doc, idx)
             novo_idx = idx + 1
 
-        pagina_id = G.DOCUMENTOS[nome_doc]["paginas"][novo_idx]
-        self.mover_item_lateral(pagina_id, novo_idx)
+        # Re-renderiza apenas a parte lateral (sem refazer tudo)
+        self._atualizar_lista_documento(nome_doc)
+        
+    def _atualizar_lista_documento(self, nome_doc):
+        """Recria os itens da lista lateral de um documento após alterações."""
+        # Procura o item de documento
+        doc_item = self._buscar_item_documento(nome_doc)
+        if not doc_item:
+            return
+
+        # Remove todos os filhos antigos (páginas)
+        while doc_item.childCount():
+            doc_item.removeChild(doc_item.child(0))
+
+        # Recria as páginas na nova ordem
+        for pagina_id in G.DOCUMENTOS[nome_doc]["paginas"]:
+            descricao = G.PAGINAS[pagina_id].get("descricao", "")
+            self._adicionar_item_lateral(pagina_id, descricao, doc_item)
 
 
-
-    # ---------------------------------------------------------------
     def _excluir_e_atualizar(self, nome_doc, idx):
-        """Executa a animação de exclusão e só depois a lógica."""
         self._animar_remocao_pagina(
             nome_doc, idx,
             lambda: self._finalizar_excluir_e_atualizar(nome_doc, idx)
@@ -731,72 +579,43 @@ class RenderizadorPaginas:
     def _finalizar_excluir_e_atualizar(self, nome_doc, idx):
         self.logica.excluir_pagina(nome_doc, idx)
         self.renderizar_com_zoom_padrao()
-        self.lista_lateral.window().atualizar_tamanho_paginas()
-
-        # 🔥 Restaura a atualização total — como na versão antiga
-        self.renderizar_com_zoom_padrao()
-        self.lista_lateral.window().atualizar_tamanho_paginas()
-
-        # Opcional: ainda pode emitir o sinal, se quiser
+        win = self.lista_lateral.window()
+        if hasattr(win, "atualizar_tamanho_paginas"):
+            win.atualizar_tamanho_paginas()
         if hasattr(self.logica, "documentos_atualizados"):
             self.logica.documentos_atualizados.emit()
 
-
-
-
-
-
-      # ---------------- Barra de zoom ----------------
     def criar_barra_zoom(self):
-        
-
         self.btn_zoom_out = QPushButton("➖")
         self.btn_zoom_in = QPushButton("➕")
         self.btn_zoom_reset = QPushButton("100%")
         for b in (self.btn_zoom_out, self.btn_zoom_in, self.btn_zoom_reset):
             b.setFixedSize(50, 28)
             b.setStyleSheet("""
-                QPushButton {
-                    font-size: 13px;
-                    border: 1px solid #777;
-                    border-radius: 5px;
-                    background-color: #f5f5f5;
-                }
+                QPushButton { font-size: 13px; border: 1px solid #777; border-radius: 5px; background-color: #f5f5f5; }
                 QPushButton:hover { background-color: #ddd; }
             """)
-            
-        # conecta aos métodos (verifique nomes)
         self.btn_zoom_out.clicked.connect(lambda: self.ajustar_zoom(-0.1))
         self.btn_zoom_in.clicked.connect(lambda: self.ajustar_zoom(0.1))
         self.btn_zoom_reset.clicked.connect(lambda: self.definir_zoom(1.0))
 
-        # ADIÇÃO CORRETA: insere o widget de zoom no layout central onde as páginas serão adicionadas
-        # (limpar_layout() limpa self.layout_central antes, por isso recriamos a barra a cada renderização)
-
-
     def _zoom_documento(self, pagina_id, delta_y, event=None):
-        from PyQt6.QtWidgets import QApplication
-        from PyQt6.QtCore import Qt
-
         if event:
             modifiers = QApplication.keyboardModifiers()
             if not (modifiers & Qt.KeyboardModifier.ControlModifier):
-                # Propaga o scroll normalmente
                 event.ignore()
                 return
-
-        # Determina qual documento está sendo zoomado
         nome_doc = G.PAGINAS[pagina_id]["doc_original"]
         zoom_atual = self.zoom_por_doc.get(nome_doc, 1.0)
         fator_zoom = 1.1 if delta_y > 0 else 0.9
         novo_zoom = max(0.3, min(3.0, zoom_atual * fator_zoom))
         self.zoom_por_doc[nome_doc] = novo_zoom
-
-        # Atualiza todas as páginas deste documento
         for pid, widget in self.paginas_widgets.items():
             if G.PAGINAS[pid]["doc_original"] != nome_doc:
                 continue
-            pixmap_original = self.pixmaps_originais[pid]
+            pixmap_original = self.pixmaps_originais.get(pid)
+            if pixmap_original is None:
+                continue
             nova_largura = int(pixmap_original.width() * novo_zoom)
             nova_altura = int(pixmap_original.height() * novo_zoom)
             pixmap_redimensionado = pixmap_original.scaled(
@@ -808,22 +627,22 @@ class RenderizadorPaginas:
             if label:
                 label.setPixmap(pixmap_redimensionado)
 
-
     def ajustar_zoom(self, delta):
         if self.bloquear_render:
             return
-        self.bloquear_render = True  # trava atualização via sinal
-
-        documentos_visiveis = set(G.PAGINAS[pid]["doc_original"]
-                                for pid, w in self.paginas_widgets.items() if w.isVisible())
+        self.bloquear_render = True
+        documentos_visiveis = set(
+            G.PAGINAS[pid]["doc_original"]
+            for pid, w in self.paginas_widgets.items() if w.isVisible()
+        )
         for doc in documentos_visiveis:
             novo_zoom = max(0.3, min(3.0, self.zoom_por_doc.get(doc, 1.0) + delta))
             self.zoom_por_doc[doc] = novo_zoom
-
-        # Re-renderiza localmente as páginas visíveis
         for pid, widget in self.paginas_widgets.items():
             if G.PAGINAS[pid]["doc_original"] in documentos_visiveis:
-                pixmap_original = self.pixmaps_originais[pid]
+                pixmap_original = self.pixmaps_originais.get(pid)
+                if pixmap_original is None:
+                    continue
                 novo_zoom = self.zoom_por_doc[G.PAGINAS[pid]["doc_original"]]
                 nova_largura = int(pixmap_original.width() * novo_zoom)
                 nova_altura = int(pixmap_original.height() * novo_zoom)
@@ -835,21 +654,13 @@ class RenderizadorPaginas:
                 label = widget.findChild(QLabel, "page_image_label")
                 if label:
                     label.setPixmap(pixmap_redimensionado)
-
-        self.bloquear_render = False  # destrava após o zoom
-
+        self.bloquear_render = False
 
     def definir_zoom(self, valor):
-        # Aplica a todas as páginas visíveis
-        documentos_visiveis = set(G.PAGINAS[pid]["doc_original"] 
-                                for pid, w in self.paginas_widgets.items() if w.isVisible())
+        documentos_visiveis = set(
+            G.PAGINAS[pid]["doc_original"]
+            for pid, w in self.paginas_widgets.items() if w.isVisible()
+        )
         for doc in documentos_visiveis:
             self.zoom_por_doc[doc] = valor
-
-        # Atualiza a interface
         self.ajustar_zoom(0)
-
-
-
-
-

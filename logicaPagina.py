@@ -11,6 +11,7 @@ from conversor import ConversorArquivo as conversor
 from PyQt6.QtWidgets import QDialog, QVBoxLayout, QLabel, QComboBox, QPushButton, QFileDialog, QMessageBox
 from conversor import ConversorArquivo as conversor  # importe a classe que você escreveu
 from geradorDocumentos import Geradora
+from signals import signals as AppSignals
 
 def abreviar_nome(nome, limite=20):
     if len(nome) > limite:
@@ -69,7 +70,10 @@ class LogicaPagina(QObject):
                 print("-" * 40)
 
             G.Historico.salvar_estado()# apenas aqui, antes de qualquer alteração
-            self.documentos_atualizados.emit()
+            try:
+                AppSignals.documentos_atualizados.emit()
+            except Exception:
+                pass
             
             return True
         except Exception as e:
@@ -121,6 +125,11 @@ class LogicaPagina(QObject):
             print(f"\n[AÇÃO] Página removida: {G.PAGINAS[pid_removida]['descricao']}")
             print(f"Documento '{nome_doc}' agora tem {len(paginas)} páginas.")
             
+            try:
+                AppSignals.documentos_atualizados.emit()
+            except Exception:
+                pass
+
             self.documentos_atualizados.emit()
 
 
@@ -227,7 +236,11 @@ class LogicaPagina(QObject):
         del G.PAGINAS[pagina_id]
 
         print(f"[AÇÃO] Página movida fisicamente de '{origem}' para '{destino}' como nova página '{novo_pid}'")
-        self.documentos_atualizados.emit()
+        try:
+            AppSignals.documentos_atualizados.emit()
+        except Exception:
+            pass
+
     # ------------------------------
     # SALVAR DOCUMENTO
     # ------------------------------
@@ -287,4 +300,3 @@ class LogicaPagina(QObject):
         btn_ok.clicked.connect(salvar)
         dialog.exec()
 
-        

@@ -1,36 +1,42 @@
+# ...existing code...
 import sys
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QVBoxLayout, QHBoxLayout, QWidget, QPushButton,
-    QListWidget, QListWidgetItem, QLabel, QScrollArea, QTextEdit, QDialog, QComboBox,QSizePolicy,QFrame, 
-    QVBoxLayout, QHBoxLayout, QPushButton,  QMessageBox,QFileDialog,QSplitter
+    QListWidget, QListWidgetItem, QLabel, QScrollArea, QTextEdit, QDialog, QComboBox, QSizePolicy, QFrame, 
+    QMessageBox, QFileDialog, QSplitter, QTreeWidget, QTreeWidgetItem, QInputDialog
 )
 from PyQt6.QtGui import QPixmap, QImage, QKeySequence, QAction, QIcon
-from PyQt6.QtCore import Qt,QTimer
+from PyQt6.QtCore import Qt, QTimer, QSize
 from logicaPagina import LogicaPagina as logica
 import fitz
-from PyQt6.QtCore import QSize
-
 
 from pdf_viewer import RenderizadorPaginas
-
 import globais as G
-
 from pdf_viewer import ArrastarScrollFilter as arrastar
 import warnings
 
-
+# conecta sinais globais (importa o singleton 'signals' do módulo signals.py)
+from signals import signals as AppSignals
 
 class PDFEditor(QMainWindow):
     def __init__(self):
-        
-        super().__init__()
-        #Caminho base dos ícones
-        ICONS_PATH= G.ICONS_PATH
-        self.setWindowIcon(QIcon(f"{G.ICONS_PATH}/logo.ico"))
+        super().__init__()        # ...existing code...
+        # Caminho base dos ícones
+        ICONS_PATH = G.ICONS_PATH if hasattr(G, "ICONS_PATH") else "icons"
+        # icone da janela (fallback protegido)
+        try:
+            self.setWindowIcon(QIcon(f"{ICONS_PATH}/logo.ico"))
+        except Exception:
+            pass
 
+        # Carrega tema com proteção
+        try:
+            with open("tema_escuro.qss", "r", encoding="utf-8") as f:
+                self.setStyleSheet(f.read())
+        except Exception:
+            # fallback: sem stylesheet
+            pass
 
-        with open("tema_escuro.qss", "r") as f:
-            self.setStyleSheet(f.read())
         self.setWindowTitle("Serena LOVE PDF")
         self.setGeometry(100, 100, 1000, 700)
         self.setAcceptDrops(True)  # Permite arrastar arquivos para a janela inteira
@@ -39,6 +45,15 @@ class PDFEditor(QMainWindow):
         # Lógica do editor
         # ------------------------------
         self.logica = logica()
+
+        # ------------------------------
+        # Estado padrão / auxílio
+        # ------------------------------
+        self.zoom_factor = getattr(G, "ZOOM_PADRAO", 1.0)
+        # Vars para painel recolhível (inicializa com valores sensatos)
+        self.tamanho_padrao = 200
+        self.painel_widget = None
+        self.icone_painel = None
 
         # ------------------------------
         # Botões de cabeçalho fixo acima do PDF
@@ -64,7 +79,6 @@ class PDFEditor(QMainWindow):
         self.btn_refazer_top.setFixedSize(40, 36)
         self.btn_refazer_top.clicked.connect(self.refazer_acao)
 
-
         linha_atalhos.addWidget(self.btn_desfazer_top)
         linha_atalhos.addWidget(self.btn_refazer_top)
         linha_atalhos.addStretch()  # empurra para a esquerda
@@ -86,9 +100,10 @@ class PDFEditor(QMainWindow):
             btn.setIconSize(QSize(20, 20))
             btn.setFixedSize(30, 30)
 
-        self.btn_zoom_menos.clicked.connect(lambda: self.gerar.ajustar_zoom(-0.1))
-        self.btn_zoom_mais.clicked.connect(lambda: self.gerar.ajustar_zoom(+0.1))
-        self.btn_zoom_reset.clicked.connect(lambda: self.gerar.definir_zoom(1.0))
+        # Delegar zoom ao renderizador (se existir)
+        self.btn_zoom_menos.clicked.connect(lambda: self.gerar.ajustar_zoom(-0.1) if hasattr(self, "gerar") else None)
+        self.btn_zoom_mais.clicked.connect(lambda: self.gerar.ajustar_zoom(+0.1) if hasattr(self, "gerar") else None)
+        self.btn_zoom_reset.clicked.connect(lambda: self.gerar.definir_zoom(1.0) if hasattr(self, "gerar") else None)
 
         linha_zoom.addWidget(self.btn_zoom_menos)
         linha_zoom.addWidget(self.btn_zoom_reset)
@@ -96,7 +111,6 @@ class PDFEditor(QMainWindow):
         linha_zoom.addStretch()
 
         cabecalho_layout.addLayout(linha_zoom)
-
 
         # ------------------------------
         # Linha de Modos de Edição (Editar / Separar)
@@ -141,18 +155,140 @@ class PDFEditor(QMainWindow):
 
         cabecalho_layout.addLayout(linha_modos)
 
-
         # ------------------------------
         # Painel esquerdo
         # ------------------------------
         self.btn_abrir = QPushButton(" Abrir Doc")
         self.btn_abrir.setIcon(QIcon(f"{ICONS_PATH}/folder-plus.svg"))
-        self.lista_paginas = QListWidget()
+        # --- Lista lateral moderna com subpastas e renomear ---
+        self.lista_paginas = QTreeWidget()
+        self.lista_paginas.setHeaderHidden(True)
         self.lista_paginas.setSizePolicy(QSizePolicy.Policy.MinimumExpanding, QSizePolicy.Policy.Expanding)
+        self.lista_paginas.setSelectionMode(QTreeWidget.SelectionMode.SingleSelection)
         self.lista_paginas.setDragEnabled(True)
         self.lista_paginas.setAcceptDrops(True)
-        self.lista_paginas.setDragDropMode(QListWidget.DragDropMode.InternalMove)
+        self.lista_paginas.setDropIndicatorShown(True)
         self.lista_paginas.setDefaultDropAction(Qt.DropAction.MoveAction)
+        self.lista_paginas.setDragDropMode(QTreeWidget.DragDropMode.InternalMove)
+        self.lista_paginas.setIndentation(15)
+        self.lista_paginas.setAnimated(True)
+        self.lista_paginas.setStyleSheet("""
+            QTreeWidget::item {
+                padding: 6px;
+            }
+            QTreeWidget::item:selected {
+                background-color: #0078D7;
+                color: white;
+                border-radius: 5px;
+            }
+        """)
+        # guarda estados de expansão dos top-level items (será preenchido antes de re-render)
+        self._expanded_states = {}
+
+        # --- Impede páginas de virarem filhas de outras e documents dentro de documents ---
+        def _drop_event_personalizado(event):
+            try:
+                pos = event.position().toPoint()
+                index = self.lista_paginas.indexAt(pos)
+
+                # Se não há índice válido no ponto do drop, cancela (drop fora de item)
+                if not index.isValid():
+                    print("Drop cancelado: fora de qualquer item (index inválido).")
+                    event.ignore()
+                    return
+
+                # Obtém item de forma robusta (usa itemFromIndex)
+                item_destino = self.lista_paginas.itemFromIndex(index)
+                if item_destino is None:
+                    print("Drop cancelado: destino não encontrado (itemFromIndex retornou None).")
+                    event.ignore()
+                    return
+
+                print("DEBUG drop: pos=", pos, " item_destino=", bool(item_destino))
+
+                # Bloqueia se o destino for uma página (tem pai)
+                if item_destino.parent():
+                    print("Drop bloqueado: destino é página.")
+                    event.ignore()
+                    return
+
+                # item sendo movido (pode ser None) -> captura estado ANTES do drop
+                item_arrastado = self.lista_paginas.currentItem()
+                if item_arrastado is None:
+                    sels = self.lista_paginas.selectedItems()
+                    item_arrastado = sels[0] if sels else None
+
+                texto_arrastado = item_arrastado.text(0) if item_arrastado is not None else None
+                era_top_level = (item_arrastado is not None and item_arrastado.parent() is None)
+
+                # snapshot dos top-level names antes do drop (para restauração)
+                top_before = [self.lista_paginas.topLevelItem(i).text(0) for i in range(self.lista_paginas.topLevelItemCount())]
+
+                # Impede mover documento dentro de outro documento (caso detectado antes do drop)
+                if (item_destino and not item_destino.parent() and 
+                    item_arrastado and not item_arrastado.parent() and item_destino != item_arrastado):
+                    print("Drop bloqueado: documento dentro de outro documento.")
+                    event.ignore()
+                    return
+
+                # Chama o comportamento padrão de drop
+                QTreeWidget.dropEvent(self.lista_paginas, event)
+
+                # --- Pós-drop: validações de integridade ---
+                def _encontra_item_por_texto(txt):
+                    for i in range(self.lista_paginas.topLevelItemCount()):
+                        top = self.lista_paginas.topLevelItem(i)
+                        if top.text(0) == txt:
+                            return top
+                        for j in range(top.childCount()):
+                            if top.child(j).text(0) == txt:
+                                return top.child(j)
+                    return None
+
+                # Se o item arrastado era top-level, garante que ele não virou filho
+                if texto_arrastado and era_top_level:
+                    encontrado = _encontra_item_por_texto(texto_arrastado)
+                    if encontrado is None:
+                        print("Aviso: documento top-level desapareceu após drop — restaurando lista pela lógica.")
+                        if hasattr(self, "gerar"):
+                            self.gerar.renderizar_com_zoom_padrao()
+                        event.accept()
+                        return
+                    if encontrado.parent() is not None:
+                        print("Aviso: documento top-level tornou-se filho — restaurando lista pela lógica.")
+                        if hasattr(self, "gerar"):
+                            self.gerar.renderizar_com_zoom_padrao()
+                        event.accept()
+                        return
+
+                # Se o número/nomes dos top-level mudaram de forma inesperada, restaura
+                top_after = [self.lista_paginas.topLevelItem(i).text(0) for i in range(self.lista_paginas.topLevelItemCount())]
+                # permite reordenação (mesmos nomes, ordem pode mudar) — só restaura se um nome sumiu
+                if set(top_before) != set(top_after):
+                    print("Aviso: top-level diferente após drop — restaurando pela lógica.")
+                    if hasattr(self, "gerar"):
+                        self.gerar.renderizar_com_zoom_padrao()
+                    event.accept()
+                    return
+
+                # Atualiza a ordem lógica
+                if hasattr(self, "_atualizar_ordem_paginas"):
+                    self._atualizar_ordem_paginas()
+
+                event.accept()
+                print("→ Drop finalizado com sucesso.")
+
+            except Exception as e:
+                print(f"[ERROR] drop_event_personalizado falhou: {e}")
+                event.ignore()
+
+
+    # Substitui o método padrão do QTreeWidget pela função personalizada
+        self.lista_paginas.dropEvent = _drop_event_personalizado
+
+
+        # --- Permite renomear documentos ---
+        self.lista_paginas.itemDoubleClicked.connect(self._renomear_item)
 
         layout_esquerda = QVBoxLayout()
         layout_esquerda.addWidget(self.btn_abrir)
@@ -171,7 +307,6 @@ class PDFEditor(QMainWindow):
 
         # Texto
         text_label = QLabel("Arquivos e Páginas:")
-        
 
         # Adiciona ao layout horizontal
         titulo_layout.addWidget(icon_label)
@@ -197,16 +332,25 @@ class PDFEditor(QMainWindow):
         self.scroll_area.setWidget(self.paginas_widget)
 
         # Dicionário para guardar widgets das páginas
-        self.paginas_widgets = {}  
+        self.paginas_widgets = {}
 
         # Renderizador das páginas
         self.gerar = RenderizadorPaginas(self.paginas_layout, self.lista_paginas, self.logica, self.scroll_area)
+
+        # conecta sinais globais para atualizar UI quando solicitado (protegido)
+        try:
+            AppSignals.documentos_atualizados.connect(lambda: self.gerar.renderizar_com_zoom_padrao() if hasattr(self, "gerar") else None)
+            AppSignals.layout_update_requested.connect(lambda: self.atualizar_tamanho_paginas())
+            AppSignals.layout_update_requested.connect(self._restaurar_expansoes)
+        except Exception:
+            pass
 
         # ------------------------------
         # Filtro de arrastar
         # ------------------------------
         self.filtro_arrastar = arrastar(self.scroll_area)
         self.scroll_area.viewport().installEventFilter(self.filtro_arrastar)
+
         # ------------------------------
         # Layout principal (horizontal)
         # ------------------------------
@@ -221,13 +365,15 @@ class PDFEditor(QMainWindow):
         # ------------------------------
         lado_esquerdo = QWidget()
         lado_esquerdo.setLayout(layout_esquerda)
+        # guarda referência para painel
+        self.painel_widget = lado_esquerdo
+
         # ------------------------------
         # Splitter horizontal (arrastar para esconder a lista lateral)
         # ------------------------------
         self.splitter = QSplitter(Qt.Orientation.Horizontal)
         self.splitter.addWidget(lado_esquerdo)
         self.splitter.addWidget(central_widget)
-        # Define o tamanho relativo inicial
         # Define o tamanho relativo inicial
         self.splitter.setStretchFactor(0, 0)
         self.splitter.setStretchFactor(1, 1)
@@ -254,6 +400,7 @@ class PDFEditor(QMainWindow):
         refazer_acao.setShortcut(QKeySequence("Ctrl+Alt+Z"))
         refazer_acao.triggered.connect(self.refazer_acao)
         self.addAction(refazer_acao)
+
         # ------------------------------
         # Botão "mostrar painel" (fica visível quando o painel lateral é fechado)
         # ------------------------------
@@ -262,26 +409,17 @@ class PDFEditor(QMainWindow):
         self.btn_mostrar_painel.setFixedSize(20, 100)
         self.btn_mostrar_painel.setIconSize(QSize(20, 20))
         self.btn_mostrar_painel.setVisible(False)
+        # referencia como icone_painel para métodos que usam esse nome
+        self.icone_painel = self.btn_mostrar_painel
 
-
-        self.btn_mostrar_painel.clicked.connect(lambda: self.splitter.setSizes([200, 800]))
+        self.btn_mostrar_painel.clicked.connect(lambda: self.splitter.setSizes([self.tamanho_padrao, self.width() - self.tamanho_padrao]))
 
         # Adiciona o botão sobre o container principal
         self.btn_mostrar_painel.setParent(container)
-        self.btn_mostrar_painel.move(10, self.height() - 600)
+        # usa função de reposicionamento para posicionar corretamente
+        self._reposicionar_botao = lambda: self.btn_mostrar_painel.move(10, max(10, self.height() - 120))
+        self._reposicionar_botao()
         self.btn_mostrar_painel.raise_()  # garante que ele fique visível por cima
-
-        # ------------------------------
-        # Reposiciona o botão se a janela for redimensionada
-        # ------------------------------
-        def reposicionar_botao():
-            self.btn_mostrar_painel.move(10, self.height() - 600)
-
-        def resizeEvent(event):
-            reposicionar_botao()
-            return super(PDFEditor, self).resizeEvent(event)
-
-        self.resizeEvent = resizeEvent
 
         # ------------------------------
         # Timer para detectar se o painel foi escondido
@@ -298,10 +436,98 @@ class PDFEditor(QMainWindow):
         self._arrastando = False
         self._pos_inicial = None
         self.scroll_area.viewport().setMouseTracking(True)
-      
 
+    def _finalizar_mover_e_atualizar(self, pagina_id, novo_idx):
+        """
+        Atualiza a posição de uma página na árvore lateral após arrastar.
+        pagina_id: ID da página que foi movida
+        novo_idx: novo índice de posição dentro do documento
+        """
+        def _extrair_id(user_data):
+            # user_data pode ser o id direto ou um dict {'tipo': 'pagina', 'pagina_id': id}
+            if isinstance(user_data, dict):
+                return user_data.get("pagina_id")
+            return user_data
 
-   
+        # Percorre todos os documentos (top-level items)
+        for i in range(self.lista_paginas.topLevelItemCount()):
+            doc_item = self.lista_paginas.topLevelItem(i)
+            # Procura a página pelo UserRole
+            for j in range(doc_item.childCount()):
+                pagina_item = doc_item.child(j)
+                stored = pagina_item.data(0, Qt.ItemDataRole.UserRole)
+                pid = _extrair_id(stored)
+                if pid == pagina_id:
+                    # Remove o item da posição antiga
+                    doc_item.takeChild(j)
+                    # Insere na nova posição
+                    doc_item.insertChild(novo_idx, pagina_item)
+                    break
+
+        # Atualiza a ordem lógica das páginas
+        self._atualizar_ordem_paginas()
+
+    def _renomear_item(self, item, column):
+        """Permite renomear um documento ao dar duplo clique."""
+        texto_atual = item.text(0)
+        novo_nome, ok = QInputDialog.getText(self, "Renomear", "Novo nome:", text=texto_atual)
+        if ok and novo_nome.strip():
+            item.setText(0, novo_nome.strip())
+
+    def _atualizar_ordem_paginas(self):
+        """Atualiza a ordem lógica das páginas conforme a nova hierarquia da árvore."""
+        def _extrair_id(user_data):
+            if isinstance(user_data, dict):
+                return user_data.get("pagina_id")
+            return user_data
+
+        nova_ordem_docs = {}
+        # guarda estado expanded atual
+        expanded = {}
+        for i in range(self.lista_paginas.topLevelItemCount()):
+            doc_item = self.lista_paginas.topLevelItem(i)
+            nome_doc = doc_item.text(0)
+            expanded[nome_doc] = doc_item.isExpanded()
+
+            paginas = []
+            for j in range(doc_item.childCount()):
+                pagina_item = doc_item.child(j)
+                raw = pagina_item.data(0, Qt.ItemDataRole.UserRole)
+                pagina_id = _extrair_id(raw)
+                if pagina_id is not None:
+                    paginas.append(pagina_id)
+
+            nova_ordem_docs[nome_doc] = paginas
+
+        # Atualiza os dados globais
+        for nome_doc, paginas in nova_ordem_docs.items():
+            if nome_doc in G.DOCUMENTOS:
+                G.DOCUMENTOS[nome_doc]["paginas"] = paginas
+
+        # salva para restaurar após render
+        self._expanded_states = expanded
+
+        # Emite sinal para atualizar a UI em vez de chamar direto
+        try:
+            AppSignals.documentos_atualizados.emit()
+        except Exception:
+            # fallback: tenta renderizar diretamente se sinal falhar
+            if hasattr(self, "gerar"):
+                self.gerar.renderizar_com_zoom_padrao()
+
+    def _restaurar_expansoes(self):
+        """Restaura o estado de expansão dos top-level items salvo em self._expanded_states."""
+        if not hasattr(self, "_expanded_states") or not self._expanded_states:
+            return
+        for i in range(self.lista_paginas.topLevelItemCount()):
+            doc_item = self.lista_paginas.topLevelItem(i)
+            nome_doc = doc_item.text(0)
+            if nome_doc in self._expanded_states:
+                try:
+                    doc_item.setExpanded(bool(self._expanded_states[nome_doc]))
+                except Exception:
+                    pass
+
     def selecionar_unico_modo(self):
         for btn in self.botoes_modos:
             if btn != self.sender():
@@ -309,10 +535,6 @@ class PDFEditor(QMainWindow):
         # Aqui você pode chamar a função real do modo selecionado
         modo = self.sender().text()
         print(f"Modo selecionado: {modo}")
-
-
-
-       
 
     # Dentro da classe PDFEditor
     def closeEvent(self, event):
@@ -339,9 +561,9 @@ class PDFEditor(QMainWindow):
     # Quando o usuário arrasta algo para a janela
     def dragEnterEvent(self, event):
         if event.mimeData().hasUrls():
-            # Só aceita arquivos PDF
+            # Só aceita arquivos com extensões suportadas
             urls = event.mimeData().urls()
-            if all(url.toLocalFile().lower().endswith(('.pdf', '.docx', '.doc', '.txt', '.png', '.jpg', '.jpeg','.html')) for url in urls):
+            if all(url.toLocalFile().lower().endswith(('.pdf', '.docx', '.doc', '.txt', '.png', '.jpg', '.jpeg', '.html', '.xls', '.xlsx')) for url in urls):
                 event.acceptProposedAction()
             else:
                 event.ignore()
@@ -349,13 +571,24 @@ class PDFEditor(QMainWindow):
             event.ignore()
 
     # Quando o usuário solta os arquivos na janela
-    def dropEvent(self, event):
-        for url in event.mimeData().urls():
-            caminho_arquivo = url.toLocalFile()
-            # aqui passamos direto, nenhum diálogo será aberto
-            self.logica.abrir_documento(caminho_origem=caminho_arquivo)
-            self.gerar.renderizar_todas(G.ZOOM_PADRAO)
-            self.atualizar_tamanho_paginas()
+    def drop_event_personalizado(self, event):
+        item_destino = self.lista_paginas.itemAt(event.position().toPoint())
+
+        # Impede que páginas se tornem filhas de outras
+        if item_destino and item_destino.parent():
+            event.ignore()
+            return
+
+        item_arrastado = self.lista_paginas.currentItem()
+        if item_destino and not item_destino.parent() and not item_arrastado.parent() and item_destino != item_arrastado:
+            event.ignore()
+            return
+
+        # Executa o drop padrão
+        QTreeWidget.dropEvent(self.lista_paginas, event)
+
+        # Atualiza a lógica
+        self._atualizar_ordem_paginas()
 
     # ------------------------------
     # Abrir PDF
@@ -363,34 +596,45 @@ class PDFEditor(QMainWindow):
     def abrir_pdf(self):
         # Chamado apenas pelo botão
         caminho_origem, _ = QFileDialog.getOpenFileName(
-            self, "Abrir Documento", "", 
+            self, "Abrir Documento", "",
             "Arquivos suportados (*.pdf *.doc *.docx *.xls *.xlsx *.txt *.html *.jpg *.jpeg *.png)"
         )
         if caminho_origem:  # só continua se o usuário escolheu um arquivo
             self.logica.abrir_documento(caminho_origem=caminho_origem)
-            self.gerar.renderizar_todas(G.ZOOM_PADRAO)
+            if hasattr(self, "gerar"):
+                self.gerar.renderizar_todas(getattr(G, "ZOOM_PADRAO", 1.0))
             self.atualizar_tamanho_paginas()
-
-
-    #DEIXA A IMAGEM NO TAMANHO CERTO
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
+        # reposiciona botão (se função existir)
+        if hasattr(self, "_reposicionar_botao"):
+            try:
+                self._reposicionar_botao()
+            except Exception:
+                pass
         self.atualizar_tamanho_paginas()
-
 
     def atualizar_tamanho_paginas(self):
         largura_disponivel = min(self.scroll_area.viewport().width() - 80, 900)
 
-        for pagina_id, widget in self.gerar.paginas_widgets.items(): 
-            label_pixmap = widget.findChild(QLabel, "page_image_label") 
-            pix_original = self.gerar.pixmaps_originais.get(pagina_id)
+        # usa pixmaps do renderizador (se disponível)
+        if hasattr(self.gerar, "paginas_widgets") and hasattr(self.gerar, "pixmaps_originais"):
+            paginas_widgets = self.gerar.paginas_widgets
+            pixmaps_originais = self.gerar.pixmaps_originais
+        else:
+            paginas_widgets = getattr(self, "paginas_widgets", {})
+            pixmaps_originais = getattr(self, "pixmaps_originais", {})
+
+        for pagina_id, widget in paginas_widgets.items():
+            label_pixmap = widget.findChild(QLabel, "page_image_label")
+            pix_original = pixmaps_originais.get(pagina_id)
             if label_pixmap is None or pix_original is None:
                 continue
 
             pix_redim = pix_original.scaled(
                 largura_disponivel,
-                int(largura_disponivel * pix_original.height() / pix_original.width()), 
+                int(largura_disponivel * pix_original.height() / pix_original.width()),
                 Qt.AspectRatioMode.KeepAspectRatio,
                 Qt.TransformationMode.SmoothTransformation
             )
@@ -400,7 +644,6 @@ class PDFEditor(QMainWindow):
 
         self.paginas_layout.update()
         self.paginas_widget.update()
-
 
     # ------------------------------
     # Transferir página
@@ -428,15 +671,12 @@ class PDFEditor(QMainWindow):
             destino = combo.currentText()
             self.logica.moverPagina(pagina_id, destino)
 
-    
-
     # ------------------------------
     # Salvar documentos
     # ------------------------------
     def salvar_pdf_documento(self, nome_doc):
         self.logica.salvar_documento(self, nome_doc)
-        self.atualizar_tamanho_paginas
-
+        self.atualizar_tamanho_paginas()
 
     # ------------------------------
     # Ações de Desfazer/Refazer
@@ -444,56 +684,73 @@ class PDFEditor(QMainWindow):
     def desfazer_acao(self):
         # 1. Executa a lógica de desfazer (muda G.DOCUMENTOS)
         G.Historico.desfazer()
-        # 2. 💥 Força o redesenho da tela lendo os novos dados de G.DOCUMENTOS
-        self.gerar.renderizar_com_zoom_padrao() 
+        # 2. Força o redesenho da tela lendo os novos dados de G.DOCUMENTOS
+        if hasattr(self, "gerar"):
+            self.gerar.renderizar_com_zoom_padrao()
         self.atualizar_tamanho_paginas()
         print("🡄 Última ação desfeita!")
+
     def refazer_acao(self):
         # 1. Executa a lógica de refazer (muda G.DOCUMENTOS)
         G.Historico.refazer()
-        # 2. 💥 Força o redesenho da tela lendo os novos dados de G.DOCUMENTOS
-        self.gerar.renderizar_com_zoom_padrao() 
+        # 2. Força o redesenho da tela lendo os novos dados de G.DOCUMENTOS
+        if hasattr(self, "gerar"):
+            self.gerar.renderizar_com_zoom_padrao()
         self.atualizar_tamanho_paginas()
         print("🡄 Última ação refeita!")
 
-
-
- # ---------------- Zoom ----------------
+    # ---------------- Zoom ----------------
     def ajustar_zoom(self, delta):
-        novo_zoom = self.zoom_factor + delta
+        # delega ao renderizador se disponível
+        if hasattr(self, "gerar") and hasattr(self.gerar, "ajustar_zoom"):
+            self.gerar.ajustar_zoom(delta)
+            return
+        novo_zoom = getattr(self, "zoom_factor", 1.0) + delta
         if 0.3 <= novo_zoom <= 3.0:
             self.zoom_factor = novo_zoom
-            self.renderizar_paginas()
+            if hasattr(self, "renderizar_paginas"):
+                self.renderizar_paginas()
 
     def definir_zoom(self, valor):
+        if hasattr(self, "gerar") and hasattr(self.gerar, "definir_zoom"):
+            self.gerar.definir_zoom(valor)
+            return
         self.zoom_factor = valor
-        self.renderizar_paginas()
+        if hasattr(self, "renderizar_paginas"):
+            self.renderizar_paginas()
 
-    
     # ---------------- Painel recolhível ----------------
     def verificar_painel(self):
         tamanhos = self.splitter.sizes()
         if tamanhos[0] < 40:
-            self.painel_widget.setVisible(False)
-            self.icone_painel.setVisible(True)
+            if self.painel_widget is not None:
+                self.painel_widget.setVisible(False)
+            if self.icone_painel is not None:
+                self.icone_painel.setVisible(True)
             self.splitter.setSizes([0, self.width()])
         else:
-            self.painel_widget.setVisible(True)
-            self.icone_painel.setVisible(False)
+            if self.painel_widget is not None:
+                self.painel_widget.setVisible(True)
+            if self.icone_painel is not None:
+                self.icone_painel.setVisible(False)
 
     def restaurar_painel(self):
-        self.painel_widget.setVisible(True)
-        self.icone_painel.setVisible(False)
+        if self.painel_widget is not None:
+            self.painel_widget.setVisible(True)
+        if self.icone_painel is not None:
+            self.icone_painel.setVisible(False)
         self.splitter.setSizes([self.tamanho_padrao, self.width() - self.tamanho_padrao])
-
-
 
 
 if __name__ == "__main__":
     warnings.filterwarnings("ignore", category=DeprecationWarning)
     app = QApplication(sys.argv)
-    app.setWindowIcon(QIcon("icons\logo.ico"))
+    try:
+        app.setWindowIcon(QIcon(f"{G.ICONS_PATH}/logo.ico"))
+    except Exception:
+        pass
 
     janela = PDFEditor()
     janela.show()
     sys.exit(app.exec())
+# ...existing code...
