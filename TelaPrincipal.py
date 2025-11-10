@@ -753,4 +753,3 @@ if __name__ == "__main__":
     janela = PDFEditor()
     janela.show()
     sys.exit(app.exec())
-# ...existing code...

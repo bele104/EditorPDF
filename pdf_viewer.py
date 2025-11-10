@@ -215,7 +215,42 @@ class RenderizadorPaginas:
         max_width = 100
         self.lista_lateral.setMinimumWidth(max_width + 20)
         self.lista_lateral.setSizePolicy(QSizePolicy.Policy.MinimumExpanding, QSizePolicy.Policy.Expanding)
+    def adicionar_botao_linha(self, pagina_widget, icone_path):
+        """
+        Adiciona um botão estilo linha abaixo de uma página.
+        - pagina_widget: QWidget da página
+        - icone_path: caminho do ícone centralizado
+        """
+        # Cria o botão que será a "linha"
+        botao = QPushButton()
+        botao.setFixedHeight(20)  # altura da linha
+        botao.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)  # estica horizontalmente
+        botao.setStyleSheet("""
+            QPushButton {
+                background-color: #0078D7;  /* cor da linha */
+                border: none;
+            }
+            QPushButton:hover {
+                background-color: #005EA6;
+            }
+        """)
 
+        # Coloca o ícone no centro do botão usando QLabel
+        if icone_path:
+            icone_label = QLabel(botao)
+            icone_label.setPixmap(QIcon(icone_path).pixmap(QSize(16, 16)))
+            icone_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            icone_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)  # não bloqueia clique
+            icone_label.setGeometry(botao.rect())  # ocupa todo o botão
+            icone_label.setScaledContents(True)
+
+        # Adiciona o botão ao layout vertical da página
+        layout = pagina_widget.layout()
+        if isinstance(layout, QVBoxLayout) or isinstance(layout, QHBoxLayout):
+            layout.addWidget(botao)
+
+
+            
     def _adicionar_cabecalho_doc(self, nome_doc):
         header_widget = QWidget()
         header_layout = QHBoxLayout(header_widget)
@@ -257,36 +292,42 @@ class RenderizadorPaginas:
         pagina_num_origem = pagina_info["fitz_index"]
         pagina = doc_real.load_page(pagina_num_origem)
         try:
+            # Renderiza página
             pix = pagina.get_pixmap(matrix=fitz.Matrix(zoom, zoom))
             img = QImage(pix.samples, pix.width, pix.height, pix.stride, QImage.Format.Format_RGB888)
             pixmap = QPixmap.fromImage(img)
             self.pixmaps_originais[pagina_id] = pixmap
 
+            # Widget da página (VLayout principal)
             page_widget = QWidget()
             page_widget.setStyleSheet("background-color: #222; border-radius: 6px;")
-            page_layout = QHBoxLayout(page_widget)
+            page_layout = QVBoxLayout(page_widget)
             page_layout.setContentsMargins(10, 10, 10, 10)
-            page_layout.setSpacing(0)
+            page_layout.setSpacing(5)
 
+            # Container horizontal da página e botões laterais
+            container = QWidget()
+            container_layout = QHBoxLayout(container)
+            container_layout.setContentsMargins(0, 0, 0, 0)
+            container_layout.setSpacing(5)
+
+            # Label da página
             label_pixmap = DraggableLabel(pagina_id)
             label_pixmap.setObjectName("page_image_label")
             label_pixmap.setPixmap(pixmap)
             label_pixmap.setAlignment(Qt.AlignmentFlag.AlignCenter)
             label_pixmap.setScaledContents(False)
             label_pixmap.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-
-            container = QWidget()
-            container_layout = QHBoxLayout(container)
-            container_layout.setContentsMargins(0, 0, 0, 0)
             container_layout.addWidget(label_pixmap)
 
+            # Container lateral de botões
             btn_container = QWidget()
-            btn_container.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
             btn_layout = QVBoxLayout(btn_container)
             btn_layout.setContentsMargins(0, 0, 0, 0)
             btn_layout.setSpacing(5)
             btn_layout.addStretch()
 
+            # Botões (Transferir, cima, baixo, excluir)
             btn_transferir = QPushButton()
             btn_transferir.setIcon(QIcon(f"{getattr(G, 'ICONS_PATH', 'icons')}/git-compare-arrows.svg"))
             btn_transferir.setFixedSize(30, 30)
@@ -312,22 +353,76 @@ class RenderizadorPaginas:
             btn_del.setFixedSize(30, 30)
             btn_del.clicked.connect(lambda _, d=nome_doc, i=idx: self._excluir_e_atualizar(d, i))
             btn_layout.addWidget(btn_del, alignment=Qt.AlignmentFlag.AlignHCenter)
-            btn_layout.addStretch()
 
-            container_layout.addWidget(btn_container, alignment=Qt.AlignmentFlag.AlignVCenter)
+            btn_layout.addStretch()
+            container_layout.addWidget(btn_container, alignment=Qt.AlignmentFlag.AlignTop)
             page_layout.addWidget(container)
 
+            # Zoom da página com scroll
             label_pixmap.wheelEvent = lambda event, pid=pagina_id: self._zoom_documento(pid, event.angleDelta().y(), event)
 
+            # Adiciona o widget da página
             self.layout_central.addWidget(page_widget)
             self.paginas_widgets[pagina_id] = page_widget
 
-            # Insere como filho do item de documento na árvore lateral
+            # Adiciona separador **entre páginas**, fora do page_widget
+            if idx < len(G.DOCUMENTOS[nome_doc]["paginas"]) - 1:
+                separador = self.criar_separador(f"{getattr(G, 'ICONS_PATH', 'icons')}/table-rows-split.svg")
+                separador.page_above = pagina_id
+                separador.page_below = G.DOCUMENTOS[nome_doc]["paginas"][idx+1]
+                self.layout_central.addWidget(separador)
+
+
+            # Adiciona à árvore lateral
             doc_item = self._buscar_item_documento(nome_doc)
             if doc_item:
                 self._adicionar_item_lateral(pagina_id, pagina_info.get("descricao", ""), doc_item)
+
         except Exception as e:
             print(f"Erro ao renderizar página {pagina_id}: {e}")
+
+    def criar_separador(self, icone_path=None):
+        separador = QWidget()
+        separador.setFixedHeight(24)
+        separador.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        separador.setCursor(Qt.CursorShape.SplitVCursor)  # cursor de corte
+
+        # Layout para centralizar ícone
+        layout = QHBoxLayout(separador)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+
+        # Fundo vermelho
+        separador.setStyleSheet("background-color: #D32F2F; border-radius: 4px;")
+
+        if icone_path:
+            label = QLabel()
+            label.setPixmap(QIcon(icone_path).pixmap(QSize(16, 16)))
+            label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            # **Não colocar WA_TransparentForMouseEvents**, senão não aparece
+            layout.addStretch()
+            layout.addWidget(label)
+            layout.addStretch()
+
+        separador.mousePressEvent = self.separador_clicado
+
+        return separador
+
+
+
+
+
+    def separador_clicado(self, event):
+        # Descobre entre quais páginas o separador está
+        # (pode guardar no objeto separador IDs das páginas acima/abaixo)
+        dialog = QMessageBox(self)
+        dialog.setWindowTitle("Cortar PDF")
+        dialog.setText("Deseja cortar/dividir o documento aqui?")
+        dialog.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        if dialog.exec() == QMessageBox.StandardButton.Yes:
+            # Aqui você chama sua função de cortar/dividir
+            print("Corte solicitado!")
+
 
     def _buscar_item_documento(self, nome_doc):
         for i in range(self.lista_lateral.topLevelItemCount()):
