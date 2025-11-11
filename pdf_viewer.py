@@ -368,8 +368,6 @@ class RenderizadorPaginas:
             # Adiciona separador **entre páginas**, fora do page_widget
             if idx < len(G.DOCUMENTOS[nome_doc]["paginas"]) - 1:
                 separador = self.criar_separador(f"{getattr(G, 'ICONS_PATH', 'icons')}/table-rows-split.svg")
-                separador.page_above = pagina_id
-                separador.page_below = G.DOCUMENTOS[nome_doc]["paginas"][idx+1]
                 self.layout_central.addWidget(separador)
 
 
@@ -381,32 +379,38 @@ class RenderizadorPaginas:
         except Exception as e:
             print(f"Erro ao renderizar página {pagina_id}: {e}")
 
+    # ...existing code...
     def criar_separador(self, icone_path=None):
-        separador = QWidget()
-        separador.setFixedHeight(24)
+        separador = QPushButton()
+        separador.setFixedHeight(20)  # altura da linha
         separador.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        separador.setCursor(Qt.CursorShape.SplitVCursor)  # cursor de corte
+        # remove padding/margins para evitar corte do conteúdo e mantém cor de fundo
+        separador.setStyleSheet("""
+            QPushButton {
+                background-color: red;  /* cor da linha */
+                border: none;
+                padding: 0px;
+                margin: 0px;
+            }
+            QPushButton:hover {
+                background-color: darkred;
+            }
+        """)
+        separador.setCursor(Qt.CursorShape.SplitVCursor)
+        separador.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
-        # Layout para centralizar ícone
-        layout = QHBoxLayout(separador)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
-
-        # Fundo vermelho
-        separador.setStyleSheet("background-color: #D32F2F; border-radius: 4px;")
-
+        # Usa o próprio ícone do botão em vez de um QLabel filho (evita problemas de geometry)
         if icone_path:
-            label = QLabel()
-            label.setPixmap(QIcon(icone_path).pixmap(QSize(16, 16)))
-            label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            # **Não colocar WA_TransparentForMouseEvents**, senão não aparece
-            layout.addStretch()
-            layout.addWidget(label)
-            layout.addStretch()
+            separador.setIcon(QIcon(icone_path))
+            separador.setIconSize(QSize(16, 16))
+            # garante que o ícone fique centralizado
+            separador.setStyleSheet(separador.styleSheet() + "QPushButton { text-align: center; }")
 
-        separador.mousePressEvent = self.separador_clicado
+        # Clique apenas printa no terminal (substitua por ação real se necessário)
+        separador.clicked.connect(lambda: print("Separador clicado!"))
 
         return separador
+# ...existing code...
 
 
 
