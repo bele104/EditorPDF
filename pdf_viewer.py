@@ -13,6 +13,8 @@ import fitz  # PyMuPDF
 import os
 import globais as G
 from signals import signals as AppSignals
+from PyQt6 import sip
+
 
 def abreviar_titulo(nome, limite=22):
     if len(nome) > limite:
@@ -200,16 +202,102 @@ class RenderizadorPaginas:
             for idx, pagina_id in enumerate(dados["paginas"]):
                 self._adicionar_pagina(nome_doc, idx, pagina_id, zoom)
 
+    # no topo do arquivo (já existente)
+
+
+    # substitua sua função limpar_layout pela versão abaixo
     def limpar_layout(self):
-        while self.layout_central.count():
-            item = self.layout_central.takeAt(0)
-            widget = item.widget()
-            if widget is not None:
-                widget.setParent(None)
-                widget.deleteLater()
-        self.lista_lateral.clear()
+        """
+        Limpa todo o layout central removendo widgets e layouts recursivamente.
+        Também desconecta sinais de QPushButton para evitar referências pendentes.
+        """
+        layout = self.layout_central
+
+        # esvazia o layout principal
+        while layout.count():
+            item = layout.takeAt(0)
+            if item is None:
+                continue
+
+            w = item.widget()
+            if w:
+                self._limpar_widget(w)
+            else:
+                sub = item.layout()
+                if sub:
+                    self._limpar_sub_layout(sub)
+
+        # limpa estruturas internas
+        try:
+            self.lista_lateral.clear()
+        except Exception:
+            pass
+
         self.paginas_widgets.clear()
         self.pixmaps_originais.clear()
+
+        # garante atualização da UI
+        try:
+            QApplication.processEvents()
+            if hasattr(self, "scroll_area") and self.scroll_area:
+                self.scroll_area.viewport().update()
+        except Exception:
+            pass
+
+
+    def _limpar_widget(self, w):
+        """Desconecta sinais e deleta um widget e seus filhos."""
+        try:
+            # desconecta clicked de botões (evita lambdas mantendo referências)
+            for btn in w.findChildren(QPushButton):
+                try:
+                    btn.clicked.disconnect()
+                except Exception:
+                    pass
+
+            # desconecta sinais custom (tenta generico)
+            for obj in w.findChildren(QObject):
+                try:
+                    # se tiver atributo 'disconnect', tenta desconectar (silencioso)
+                    sigs = getattr(obj, "signals", None)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+        # remove do pai e agenda para deleção
+        try:
+            w.setParent(None)
+        except Exception:
+            pass
+        try:
+            w.deleteLater()
+        except Exception:
+            pass
+
+
+    def _limpar_sub_layout(self, layout):
+        """Limpa recursivamente um layout e depois o deleta com sip."""
+        while layout.count():
+            item = layout.takeAt(0)
+            if item is None:
+                continue
+            w = item.widget()
+            if w:
+                self._limpar_widget(w)
+            else:
+                sub = item.layout()
+                if sub:
+                    self._limpar_sub_layout(sub)
+
+        # tenta deletar o próprio layout (sip.delete) para liberar C++ side
+        try:
+            sip.delete(layout)
+        except Exception:
+            # fallback: nada, layout será coletado depois
+            pass
+
+
 
     def ajustar_largura_lista(self):
         max_width = 100
@@ -361,14 +449,35 @@ class RenderizadorPaginas:
             # Zoom da página com scroll
             label_pixmap.wheelEvent = lambda event, pid=pagina_id: self._zoom_documento(pid, event.angleDelta().y(), event)
 
-            # Adiciona o widget da página
+
+
+            # --- depois de adicionar o widget da página ao layout e registrar em self.paginas_widgets ---
             self.layout_central.addWidget(page_widget)
             self.paginas_widgets[pagina_id] = page_widget
 
-            # Adiciona separador **entre páginas**, fora do page_widget
-            if idx < len(G.DOCUMENTOS[nome_doc]["paginas"]) - 1:
-                separador = self.criar_separador(f"{getattr(G, 'ICONS_PATH', 'icons')}/table-rows-split.svg")
+
+        
+
+            # --- CRIA APENAS SEPARADORES VÁLIDOS (fora do page_widget) ---
+            lista_paginas = G.DOCUMENTOS[nome_doc]["paginas"]
+
+            # Só cria separador se existe realmente uma página abaixo no mesmo documento
+            if len(lista_paginas) > 1 and idx < len(lista_paginas) - 1:
+                # IDs reais das páginas acima/abaixo (capturados agora)
+                page_above = pagina_id
+                page_below = lista_paginas[idx + 1]
+
+                separador = self.criar_separador("icons/table-rows-split.svg")
+                # guarda os IDs (opcional, só para debug)
+                separador.page_above = page_above
+                separador.page_below = page_below
+
+                # conecta usando captura explícita dos valores (evita late binding)
+                separador.clicked.connect(lambda _, a=page_above, b=page_below: self.separador_clicado(a, b))
+
+                # adiciona o separador ENTRE os widgets (fora do page_widget)
                 self.layout_central.addWidget(separador)
+
 
 
             # Adiciona à árvore lateral
@@ -379,23 +488,16 @@ class RenderizadorPaginas:
         except Exception as e:
             print(f"Erro ao renderizar página {pagina_id}: {e}")
 
+
+
+
     # ...existing code...
     def criar_separador(self, icone_path=None):
         separador = QPushButton()
         separador.setFixedHeight(20)  # altura da linha
         separador.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         # remove padding/margins para evitar corte do conteúdo e mantém cor de fundo
-        separador.setStyleSheet("""
-            QPushButton {
-                background-color: red;  /* cor da linha */
-                border: none;
-                padding: 0px;
-                margin: 0px;
-            }
-            QPushButton:hover {
-                background-color: darkred;
-            }
-        """)
+        separador.setStyleSheet("background-color: red;")
         separador.setCursor(Qt.CursorShape.SplitVCursor)
         separador.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
@@ -406,8 +508,8 @@ class RenderizadorPaginas:
             # garante que o ícone fique centralizado
             separador.setStyleSheet(separador.styleSheet() + "QPushButton { text-align: center; }")
 
-        # Clique apenas printa no terminal (substitua por ação real se necessário)
-        separador.clicked.connect(lambda: print("Separador clicado!"))
+
+
 
         return separador
 # ...existing code...
@@ -416,16 +518,19 @@ class RenderizadorPaginas:
 
 
 
-    def separador_clicado(self, event):
-        # Descobre entre quais páginas o separador está
-        # (pode guardar no objeto separador IDs das páginas acima/abaixo)
-        dialog = QMessageBox(self)
-        dialog.setWindowTitle("Cortar PDF")
-        dialog.setText("Deseja cortar/dividir o documento aqui?")
-        dialog.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-        if dialog.exec() == QMessageBox.StandardButton.Yes:
-            # Aqui você chama sua função de cortar/dividir
-            print("Corte solicitado!")
+    def separador_clicado(self, page_above, page_below):
+        # DEBUG no terminal
+        print("Clique no separador!")
+        print("Acima:", page_above)
+        print("Abaixo:", page_below)
+
+        # Chama a lógica que corta (você já implementou cortar_documento)
+        try:
+            self.logica.cortar_documento(page_above, page_below)
+        except Exception as e:
+            print("Erro ao chamar cortar_documento:", e)
+
+
 
 
     def _buscar_item_documento(self, nome_doc):
@@ -435,6 +540,7 @@ class RenderizadorPaginas:
             if dados and dados.get("nome_doc") == nome_doc:
                 return item
         return None
+
 
     def _adicionar_item_lateral(self, pagina_id, descricao, doc_item: QTreeWidgetItem):
         pagina_item = QTreeWidgetItem(doc_item)
@@ -453,7 +559,10 @@ class RenderizadorPaginas:
         btn_transferir = QPushButton()
         btn_transferir.setIcon(QIcon(f"{getattr(G, 'ICONS_PATH', 'icons')}/git-compare-arrows.svg"))
         btn_transferir.setMaximumWidth(30)
+        
 
+        
+        
         def abrir_dialog_transferencia():
             dialog = QDialog(self.lista_lateral.window())
             dialog.setWindowTitle("Escolha o documento destino")

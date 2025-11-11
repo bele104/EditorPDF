@@ -300,3 +300,97 @@ class LogicaPagina(QObject):
         btn_ok.clicked.connect(salvar)
         dialog.exec()
 
+    def cortar_documento(self, page_above, page_below):
+        print("\n\n===================== CORTE DE DOCUMENTO =====================")
+        print(f"page_above = {page_above}")
+        print(f"page_below = {page_below}")
+
+        # documento de origem
+        doc_origem = G.PAGINAS[page_above]["doc_original"]
+        print(f"Documento de origem: {doc_origem}")
+
+        paginas = G.DOCUMENTOS[doc_origem]["paginas"]
+        doc_fisico_original = G.DOCUMENTOS[doc_origem]["doc"]
+
+        print(f"📄 Páginas atuais do documento: {paginas}")
+
+        # índice do corte
+        idx_corte = paginas.index(page_below)
+        print(f"📌 Corte no índice: {idx_corte}")
+        print(f"   - parte1 = páginas antes do índice")
+        print(f"   - parte2 = páginas a partir do índice")
+
+        # páginas da parte 1 e parte 2
+        parte1 = paginas[:idx_corte]
+        parte2 = paginas[idx_corte:]
+
+        print(f"🟦 Parte 1 ({len(parte1)} páginas): {parte1}")
+        print(f"🟩 Parte 2 ({len(parte2)} páginas): {parte2}")
+
+        # ------------------------------------------------------------
+        #  🔥 CORTAR DE VERDADE: criar dois PDFs separados de verdade
+        # ------------------------------------------------------------
+
+        import fitz
+        
+        # cria PDF para parte1
+        novo_pdf_parte1 = fitz.open()
+        for pid in parte1:
+            idx = G.PAGINAS[pid]["fitz_index"]
+            novo_pdf_parte1.insert_pdf(doc_fisico_original, from_page=idx, to_page=idx)
+
+        # cria PDF para parte2
+        novo_pdf_parte2 = fitz.open()
+        for pid in parte2:
+            idx = G.PAGINAS[pid]["fitz_index"]
+            novo_pdf_parte2.insert_pdf(doc_fisico_original, from_page=idx, to_page=idx)
+
+        print("\n🗂️ PDFs físicos criados separadamente (parte1 + parte2).")
+
+        # renomeia documento original para parte1
+        G.DOCUMENTOS[doc_origem]["paginas"] = parte1
+        G.DOCUMENTOS[doc_origem]["doc"] = novo_pdf_parte1
+
+        # cria novo nome
+        novo_nome = f"{doc_origem}_parte2"
+        i = 1
+        while novo_nome in G.DOCUMENTOS:
+            novo_nome = f"{doc_origem}_parte2_{i}"
+            i += 1
+
+        print(f"📑 Novo documento criado: {novo_nome}")
+
+        # cria novo documento com parte 2 (PDF separado!)
+        G.DOCUMENTOS[novo_nome] = {
+            "doc": novo_pdf_parte2,
+            "paginas": parte2,
+            "path": G.DOCUMENTOS[doc_origem]["path"],
+        }
+
+        # atualiza doc_original das páginas da parte2
+        print("\n🔁 Atualizando doc_original para parte 2:")
+        for pid in parte2:
+            print(f" • {pid}: '{G.PAGINAS[pid]['doc_original']}' → '{novo_nome}'")
+            G.PAGINAS[pid]["doc_original"] = novo_nome
+
+        # re-escreve o índice das páginas do documento 1
+        print("\n🔢 Recalculando fitz_index da Parte 1:")
+        for novo_idx, pid in enumerate(parte1):
+            G.PAGINAS[pid]["fitz_index"] = novo_idx
+            print(f" • {pid}: fitz_index → {novo_idx}")
+
+        # re-escreve o índice das páginas do documento 2
+        print("\n🔢 Recalculando fitz_index da Parte 2:")
+        for novo_idx, pid in enumerate(parte2):
+            G.PAGINAS[pid]["fitz_index"] = novo_idx
+            print(f" • {pid}: fitz_index → {novo_idx}")
+
+        print("\n📘 RESULTADO FINAL DO CORTE:")
+        print(f" - {doc_origem}: {G.DOCUMENTOS[doc_origem]['paginas']}")
+        print(f" - {novo_nome}: {G.DOCUMENTOS[novo_nome]['paginas']}")
+
+        print("=================== FIM DO CORTE DE DOCUMENTO ===================\n\n")
+
+        AppSignals.documentos_atualizados.emit()
+        self.documentos_atualizados.emit()
+

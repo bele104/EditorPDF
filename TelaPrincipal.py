@@ -114,29 +114,32 @@ class PDFEditor(QMainWindow):
 
         # ------------------------------
         # Linha de Modos de Edição (Editar / Separar)
+        # ------------------------------
         linha_modos = QHBoxLayout()
         linha_modos.setAlignment(Qt.AlignmentFlag.AlignLeft)
         linha_modos.setSpacing(30)
 
         modos = [
-            ("🖊️", "Ordenar ou mudar"),
-            ("✂️", "Dividir ou Juntar")
+            (f"{ICONS_PATH}/file-stack.svg", "Mesclar Documentos"),
+            (f"{ICONS_PATH}/book-marked.svg", "Glossário")
         ]
 
         self.botoes_modos = []
 
-        for emoji, nome in modos:
+        for svg_path, nome in modos:
             vbox = QVBoxLayout()
             vbox.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-            btn = QPushButton(emoji)
+            btn = QPushButton()
             btn.setCheckable(True)
             btn.setFixedSize(60, 60)
+            btn.setIcon(QIcon(svg_path))
+            btn.setIconSize(QSize(32, 32))
+
             btn.setStyleSheet("""
                 QPushButton {
                     border-radius: 30px;
                     background-color: #444;
-                    font-size: 28px;
                 }
                 QPushButton:checked {
                     background-color: #0078d7;
@@ -154,6 +157,7 @@ class PDFEditor(QMainWindow):
             self.botoes_modos.append(btn)
 
         cabecalho_layout.addLayout(linha_modos)
+
 
         # ------------------------------
         # Painel esquerdo
