@@ -6,17 +6,168 @@ from PyQt6.QtWidgets import (
     QMessageBox, QFileDialog, QSplitter, QTreeWidget, QTreeWidgetItem, QInputDialog
 )
 from PyQt6.QtGui import QPixmap, QImage, QKeySequence, QAction, QIcon
-from PyQt6.QtCore import Qt, QTimer, QSize
+from PyQt6.QtCore import Qt, QTimer, QSize, pyqtSignal
 from logicaPagina import LogicaPagina as logica
 import fitz
 
 from pdf_viewer import RenderizadorPaginas
 import globais as G
 from pdf_viewer import ArrastarScrollFilter as arrastar
+from PyQt6.QtSvgWidgets import QSvgWidget
+from PyQt6.QtSvg import QSvgRenderer
+
 import warnings
 
 # conecta sinais globais (importa o singleton 'signals' do módulo signals.py)
 from signals import signals as AppSignals
+
+from PyQt6.QtWidgets import (
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
+    QListWidget, QListWidgetItem, QFileDialog, QMessageBox, QSizePolicy, QFrame
+)
+from PyQt6.QtCore import Qt, pyqtSignal, QSize
+from PyQt6.QtGui import QIcon
+import os
+
+class PainelMesclar(QWidget):
+    fechar_sinal = pyqtSignal()
+
+    def __init__(self):
+        super().__init__()
+        self.setStyleSheet("""
+            background-color: #222;
+            border-radius: 12px;
+        """)
+
+        self.arquivos = []
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(10)  # espaço maior entre os elementos
+
+        # Cabeçalho
+        cab = QHBoxLayout()
+        lbl = QLabel("Mesclar Documentos")
+        lbl.setStyleSheet("color: white; font-size: 16px; font-weight: bold;")
+        cab.addWidget(lbl)
+        cab.addStretch()
+
+        btnX = QPushButton("✖")
+        btnX.setFixedSize(24, 24)
+        btnX.setStyleSheet("color: white; background: transparent;")
+        btnX.clicked.connect(self.fechar_sinal)
+        cab.addWidget(btnX)
+        layout.addLayout(cab)
+
+        # Lista arrastável
+        self.lista = QListWidget()
+        self.lista.setSpacing(10)  # maior espaço entre items
+        self.lista.setStyleSheet("""
+            QListWidget {
+                background-color: #333;
+                border: none;
+                padding: 4px;
+            }
+            QListWidget::item:selected {
+                background-color: #0078d7;
+            }
+        """)
+        self.lista.setDragDropMode(QListWidget.DragDropMode.InternalMove)
+        layout.addWidget(self.lista)
+
+        # Área inferior com botões
+        botoes_layout = QHBoxLayout()
+        botoes_layout.setSpacing(10)
+
+        self.btn_adicionar = QPushButton("Adicionar documentos…")
+        self.btn_adicionar.setStyleSheet("padding: 6px; background-color: #0078d7; color: white;")
+        self.btn_adicionar.clicked.connect(self.selecionar_arquivos)
+        botoes_layout.addWidget(self.btn_adicionar)
+
+        self.btn_mesclar = QPushButton("Mesclar documentos")
+        self.btn_mesclar.setStyleSheet("padding: 6px; background-color: #28a745; color: white;")
+        self.btn_mesclar.clicked.connect(self.mesclar_documentos)
+        botoes_layout.addWidget(self.btn_mesclar)
+
+        layout.addLayout(botoes_layout)
+
+        QTimer.singleShot(50, self.selecionar_arquivos)
+
+    # Selecionar arquivos
+    def selecionar_arquivos(self):
+        arquivos, _ = QFileDialog.getOpenFileNames(
+            self,
+            "Selecionar documentos para mesclar",
+            "",
+            "PDF Files (*.pdf)"
+        )
+        if not arquivos:
+            return
+
+        for caminho in arquivos:
+            if caminho not in self.arquivos:
+                self.arquivos.append(caminho)
+                self._adicionar_item(caminho)
+
+    # Adiciona item visual
+    def _adicionar_item(self, caminho):
+        import os
+        nome = os.path.basename(caminho)
+
+        item = QListWidgetItem()
+        item.setData(Qt.ItemDataRole.UserRole, caminho)
+
+        widget = QWidget()
+        layout = QHBoxLayout(widget)
+        layout.setContentsMargins(10, 6, 10, 6)
+        layout.setSpacing(8)
+
+        label = QLabel(nome)
+        label.setStyleSheet("color: white; font-size: 14px;")
+        layout.addWidget(label)
+        layout.addStretch()
+
+        btn_remover = QPushButton("✖")
+        btn_remover.setFixedSize(20, 20)
+        btn_remover.setStyleSheet("color: white; background: transparent;")
+        btn_remover.clicked.connect(lambda _, it=item: self._remover_item(it))
+        layout.addWidget(btn_remover)
+
+        widget.setMinimumHeight(50)
+        widget.setStyleSheet("""
+            background-color: #444;
+            border-radius: 8px;
+        """)
+
+        item.setSizeHint(widget.sizeHint())
+        self.lista.addItem(item)
+        self.lista.setItemWidget(item, widget)
+        widget.show()
+
+    def _remover_item(self, item):
+        caminho = item.data(Qt.ItemDataRole.UserRole)
+        if caminho in self.arquivos:
+            self.arquivos.remove(caminho)
+        self.lista.takeItem(self.lista.row(item))
+
+    def obter_ordem(self):
+        arquivos = []
+        for i in range(self.lista.count()):
+            item = self.lista.item(i)
+            arquivos.append(item.data(Qt.ItemDataRole.UserRole))
+        return arquivos
+
+    def mesclar_documentos(self):
+        if len(self.arquivos) < 2:
+            QMessageBox.warning(self, "Erro", "Selecione pelo menos 2 documentos.")
+            return
+        ordem = self.obter_ordem()
+        print("Arquivos para mesclar na ordem:", ordem)
+        # Chame aqui sua lógica real de mesclagem
+
+
+
+
 
 class PDFEditor(QMainWindow):
     def __init__(self):
@@ -112,6 +263,8 @@ class PDFEditor(QMainWindow):
 
         cabecalho_layout.addLayout(linha_zoom)
 
+
+
         # ------------------------------
         # Linha de Modos de Edição (Editar / Separar)
         # ------------------------------
@@ -136,6 +289,8 @@ class PDFEditor(QMainWindow):
             btn.setIcon(QIcon(svg_path))
             btn.setIconSize(QSize(32, 32))
 
+            btn.setProperty("modo", nome)   #  <<----- AQUI!!!
+
             btn.setStyleSheet("""
                 QPushButton {
                     border-radius: 30px;
@@ -146,6 +301,7 @@ class PDFEditor(QMainWindow):
                 }
             """)
             btn.clicked.connect(self.selecionar_unico_modo)
+
 
             label = QLabel(nome)
             label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -532,13 +688,122 @@ class PDFEditor(QMainWindow):
                 except Exception:
                     pass
 
+
     def selecionar_unico_modo(self):
-        for btn in self.botoes_modos:
-            if btn != self.sender():
-                btn.setChecked(False)
-        # Aqui você pode chamar a função real do modo selecionado
-        modo = self.sender().text()
-        print(f"Modo selecionado: {modo}")
+            botao = self.sender()
+
+            # desmarca os outros
+            for b in self.botoes_modos:
+                if b != botao:
+                    b.setChecked(False)
+
+            # usa property("modo") (você já configurou isso ao criar os botões)
+            modo = botao.property("modo")
+            print("Modo clicado:", modo)
+
+            # se desmarcou, só fecha qualquer overlay aberto
+            if not botao.isChecked():
+                if hasattr(self, "overlay") and self.overlay:
+                    self.fechar_overlay()
+                return
+
+            # abre o painel apropriado
+            if modo == "Mesclar Documentos":
+                painel = PainelMesclar()
+                # quando o painel emitir fechar, desmarca o botão e fecha overlay
+                painel.fechar_sinal.connect(lambda: (botao.setChecked(False), self.fechar_overlay()))
+                self.mostrar_painel_flotante(painel)
+
+            elif modo == "Glossário":
+                # exemplo: você pode criar outro painel PainelGlossario()
+                painel = QLabel("Painel Glossário (implemente aqui)")
+                painel.setStyleSheet("color: white; padding: 12px;")
+                # conectar fechar se o painel tiver sinal; aqui usamos um botão fictício:
+                self.mostrar_painel_flotante(painel)
+
+
+    def mostrar_painel_flotante(self, widget):
+            """
+            Mostra `widget` como um painel flutuante centralizado sobre a janela.
+            `widget` deve ser um QWidget (ex: PainelMesclar).
+            """
+            # Fecha overlay anterior se houver
+            if hasattr(self, "overlay") and self.overlay:
+                self.fechar_overlay()
+
+            # overlay ocupa toda a janela (fundo semi-transparente)
+            self.overlay = QFrame(self)
+            self.overlay.setObjectName("overlay")
+            self.overlay.setGeometry(self.rect())
+            self.overlay.setStyleSheet("QFrame#overlay { background: rgba(0,0,0,120); }")
+            self.overlay.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+
+            # caixa central (container) — widget ficará dentro dela
+            caixa = QFrame(self.overlay)
+            caixa.setStyleSheet("background: #2b2b2b; border-radius: 10px;")
+            # tamanho adaptável: 60% da largura, 60% da altura (ajuste à vontade)
+            w = max(400, int(self.width() * 0.6))
+            h = max(260, int(self.height() * 0.6))
+            caixa.setFixedSize(w, h)
+            caixa.move((self.width() - w) // 2, (self.height() - h) // 2)
+
+            # layout para caixa e adicionar o widget passado
+            layout_caixa = QVBoxLayout(caixa)
+            layout_caixa.setContentsMargins(10, 10, 10, 10)
+            layout_caixa.setSpacing(8)
+
+            # se for um widget custom (PainelMesclar), queremos que ele preencha a caixa
+            widget.setParent(caixa)
+            widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+            layout_caixa.addWidget(widget)
+
+            # mostra tudo por cima
+            self.overlay.show()
+            # garante que fica acima de tudo
+            self.overlay.raise_()
+            caixa.raise_()
+            widget.raise_()
+
+            # guarda referência para uso posterior (fechar)
+            self.painel_flutuante = widget
+
+    def fechar_overlay(self):
+        """Fecha overlay/painel flutuante atual com segurança."""
+        try:
+            if hasattr(self, "painel_flutuante") and self.painel_flutuante:
+                # desconecta sinais para evitar chamadas pendentes
+                try:
+                    self.painel_flutuante.fechar_sinal.disconnect()
+                except Exception:
+                    pass
+                self.painel_flutuante.setParent(None)
+                self.painel_flutuante = None
+        finally:
+            if hasattr(self, "overlay") and self.overlay:
+                try:
+                    self.overlay.setParent(None)
+                except Exception:
+                    pass
+                self.overlay = None
+
+
+    def abrir_painel_mesclar(self, botao):
+        # Fecha anterior se houver
+        if hasattr(self, "Mesclar Documentos") and self.painel_flutuante:
+            self.painel_flutuante.setParent(None)
+
+        def ao_fechar():
+            botao.setChecked(False)
+            self.painel_flutuante = None
+
+        # Criar painel de mesclar
+        self.painel_flutuante = PainelMesclar(
+            self, 
+            titulo="Mesclar Documentos",
+            fechar_callback=ao_fechar
+    )
+
+
 
     # Dentro da classe PDFEditor
     def closeEvent(self, event):
