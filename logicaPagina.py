@@ -1,3 +1,4 @@
+import tempfile
 import fitz
 import os
 
@@ -331,7 +332,7 @@ class LogicaPagina(QObject):
         #  🔥 CORTAR DE VERDADE: criar dois PDFs separados de verdade
         # ------------------------------------------------------------
 
-        import fitz
+    
         
         # cria PDF para parte1
         novo_pdf_parte1 = fitz.open()
@@ -394,3 +395,65 @@ class LogicaPagina(QObject):
         AppSignals.documentos_atualizados.emit()
         self.documentos_atualizados.emit()
 
+    def mesclar_documentos_selecionados(self, lista_caminhos):
+        """
+        Recebe uma lista de caminhos de arquivos (não G.DOCUMENTOS),
+        converte todos para PDF e mescla em um único arquivo temporário.
+        Retorna o caminho do PDF final.
+        """
+        import tempfile
+        import os
+        import fitz  # PyMuPDF
+
+        print("\n🧩 [DEBUG] Iniciando mesclagem de documentos externos...")
+        print(f"📜 Lista de caminhos recebida: {lista_caminhos}")
+
+        conversor_instancia = conversor()  # cria o conversor real
+        pdf_temp_files = []
+
+        # Cria caminho temporário de saída
+        fd, caminho_saida = tempfile.mkstemp(suffix=".pdf")
+        os.close(fd)
+        print(f"📂 Caminho de saída temporário criado: {caminho_saida}")
+
+        # Converter todos os arquivos em PDF
+        for caminho in lista_caminhos:
+            print(f"🔍 [DEBUG] Processando arquivo: {caminho}")
+            if not os.path.exists(caminho):
+                print(f"⚠️ Arquivo não encontrado: {caminho}")
+                continue
+
+            pdf_path = conversor_instancia.processar_arquivo(caminho)
+            if pdf_path:
+                print(f"✅ PDF temporário gerado: {pdf_path}")
+                pdf_temp_files.append(pdf_path)
+            else:
+                print(f"❌ Falha ao converter {caminho}")
+
+        if not pdf_temp_files:
+            print("❌ Nenhum arquivo convertido para PDF. Abortando mesclagem.")
+            return None
+
+        # Mesclar todos os PDFs
+        print(f"🧮 Iniciando mesclagem de {len(pdf_temp_files)} PDFs...")
+        doc_final = fitz.open()
+        for pdf in pdf_temp_files:
+            try:
+                with fitz.open(pdf) as doc_temp:
+                    doc_final.insert_pdf(doc_temp)
+            except Exception as e:
+                print(f"❌ Falha ao adicionar {pdf}: {e}")
+
+        if doc_final.page_count == 0:
+            print("❌ Nenhuma página adicionada ao PDF final. Abortando.")
+            return None
+
+        # Salvar PDF final
+        try:
+            doc_final.save(caminho_saida)
+            doc_final.close()
+            print(f"✅ PDF mesclado salvo em: {caminho_saida}")
+            return caminho_saida
+        except Exception as e:
+            print(f"❌ Erro ao salvar PDF final: {e}")
+            return None

@@ -31,19 +31,21 @@ import os
 
 class PainelMesclar(QWidget):
     fechar_sinal = pyqtSignal()
-
-    def __init__(self):
-        super().__init__()
+    mesclagem_concluida = pyqtSignal(str) 
+    def __init__(self,parent=None):
+        super().__init__(parent)
         self.setStyleSheet("""
             background-color: #222;
             border-radius: 12px;
         """)
 
+        self.logica = logica()
+        
         self.arquivos = []
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(10, 10, 10, 10)
-        layout.setSpacing(10)  # espaço maior entre os elementos
+        layout.setSpacing(10)
 
         # Cabeçalho
         cab = QHBoxLayout()
@@ -59,18 +61,12 @@ class PainelMesclar(QWidget):
         cab.addWidget(btnX)
         layout.addLayout(cab)
 
-        # Lista arrastável
+        # Lista de arquivos
         self.lista = QListWidget()
-        self.lista.setSpacing(10)  # maior espaço entre items
+        self.lista.setSpacing(10)
         self.lista.setStyleSheet("""
-            QListWidget {
-                background-color: #333;
-                border: none;
-                padding: 4px;
-            }
-            QListWidget::item:selected {
-                background-color: #0078d7;
-            }
+            QListWidget { background-color: #333; border: none; padding: 4px; }
+            QListWidget::item:selected { background-color: #0078d7; }
         """)
         self.lista.setDragDropMode(QListWidget.DragDropMode.InternalMove)
         layout.addWidget(self.lista)
@@ -93,7 +89,7 @@ class PainelMesclar(QWidget):
 
         QTimer.singleShot(50, self.selecionar_arquivos)
 
-    # Selecionar arquivos
+    # Seleção de arquivos
     def selecionar_arquivos(self):
         arquivos, _ = QFileDialog.getOpenFileNames(
             self,
@@ -111,9 +107,7 @@ class PainelMesclar(QWidget):
 
     # Adiciona item visual
     def _adicionar_item(self, caminho):
-        import os
         nome = os.path.basename(caminho)
-
         item = QListWidgetItem()
         item.setData(Qt.ItemDataRole.UserRole, caminho)
 
@@ -134,10 +128,7 @@ class PainelMesclar(QWidget):
         layout.addWidget(btn_remover)
 
         widget.setMinimumHeight(50)
-        widget.setStyleSheet("""
-            background-color: #444;
-            border-radius: 8px;
-        """)
+        widget.setStyleSheet("background-color: #444; border-radius: 8px;")
 
         item.setSizeHint(widget.sizeHint())
         self.lista.addItem(item)
@@ -157,15 +148,48 @@ class PainelMesclar(QWidget):
             arquivos.append(item.data(Qt.ItemDataRole.UserRole))
         return arquivos
 
+    # Mesclar documentos
     def mesclar_documentos(self):
-        if len(self.arquivos) < 2:
+        ordem = self.obter_ordem()
+        if len(ordem) < 2:
             QMessageBox.warning(self, "Erro", "Selecione pelo menos 2 documentos.")
             return
-        ordem = self.obter_ordem()
-        print("Arquivos para mesclar na ordem:", ordem)
-        # Chame aqui sua lógica real de mesclagem
+
+        # Chama a lógica que mescla PDFs
+        pdf_final = self.logica.mesclar_documentos_selecionados(ordem)
+        if not pdf_final or not os.path.exists(pdf_final):
+            QMessageBox.critical(self, "Erro", "Falha ao gerar o PDF mesclado.")
+            return
 
 
+        # Abre PDF com fitz para obter páginas
+        doc = fitz.open(pdf_final)
+        nome_doc = "Mesclado.pdf"
+        nome_doc_abreviado = "Mesclado"
+
+        # Cria estrutura igual ao abrir_documento()
+        G.DOCUMENTOS[nome_doc] = {"doc": doc, "paginas": [], "path": pdf_final}
+
+        for i in range(len(doc)):
+            pid = f"{nome_doc}_p{i+1}"
+            G.PAGINAS[pid] = {
+                "descricao": f"|--{nome_doc_abreviado}-pag-{i+1}",
+                "doc_original": nome_doc,
+                "fitz_index": i,
+            }
+            G.DOCUMENTOS[nome_doc]["paginas"].append(pid)
+
+        print(f"[AÇÃO] Documento mesclado registrado no G.DOCUMENTOS como '{nome_doc}'")
+
+        # Salva estado e emite atualização de layout
+        G.Historico.salvar_estado()
+        # Aqui, quem tiver o RenderizadorPaginas deve atualizar a interface:
+        # ex: tela_principal.gerar.renderizar_com_zoom_padrao()
+
+        QMessageBox.information(self, "Sucesso", f"Documento mesclado criado: Mesclado")
+        self.mesclagem_concluida.emit(pdf_final)
+        self.fechar_sinal.emit()
+        AppSignals.documentos_atualizados.emit()
 
 
 
@@ -262,6 +286,12 @@ class PDFEditor(QMainWindow):
         linha_zoom.addStretch()
 
         cabecalho_layout.addLayout(linha_zoom)
+
+        # ------------------------------        
+        # Painel de Mesclar Documentos
+        self.painel_mesclar = PainelMesclar()
+        self.painel_mesclar.mesclagem_concluida.connect(self.carregar_pdf_mesclado)
+        self.painel_mesclar.fechar_sinal.connect(self.fechar_overlay)
 
 
 
@@ -721,6 +751,11 @@ class PDFEditor(QMainWindow):
                 # conectar fechar se o painel tiver sinal; aqui usamos um botão fictício:
                 self.mostrar_painel_flotante(painel)
 
+    def atualizar_renderizador(self):
+        # Se você tiver um renderizador de PDFs
+        if hasattr(self, "renderizador") and self.renderizador:
+            # Exemplo: renderizar a primeira página do novo documento
+            self.renderizador.renderizar_com_zoom_padrao()
 
     def mostrar_painel_flotante(self, widget):
             """
@@ -803,6 +838,24 @@ class PDFEditor(QMainWindow):
             fechar_callback=ao_fechar
     )
 
+    def carregar_pdf_mesclado(self, caminho_pdf):
+        """Recebe o caminho do PDF gerado pelo painel e renderiza no editor."""
+        print(f"[DEBUG] PDF mesclado recebido: {caminho_pdf}")
+
+        try:
+            # Adiciona o PDF na lógica
+            self.logica.abrir_documento(caminho_origem=caminho_pdf)
+
+            # Atualiza a lista lateral e renderiza
+            if hasattr(self, "gerar"):
+                self.gerar.renderizar_todas(getattr(G, "ZOOM_PADRAO", 1.0))
+            self.atualizar_tamanho_paginas()
+
+            # Mostra uma confirmação
+            QMessageBox.information(self, "Sucesso", f"Documento mesclado carregado:\n{caminho_pdf}")
+
+        except Exception as e:
+            QMessageBox.warning(self, "Erro ao carregar", f"Falha ao abrir PDF mesclado:\n{e}")
 
 
     # Dentro da classe PDFEditor
