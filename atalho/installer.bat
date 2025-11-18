@@ -98,20 +98,19 @@ echo  Atalho criado no Startup.
 
 :: Criar atalho na área de trabalho
 echo Criando atalho na área de trabalho...
+powershell -NoProfile -Command ^
+"$s = New-Object -ComObject WScript.Shell; ^
+ $shortcut = $s.CreateShortcut('%DESKTOP_DIR%\%LINK_NOME%'); ^
+ $shortcut.TargetPath = 'C:\Windows\System32\wscript.exe'; ^
+ $shortcut.Arguments = '\"%SCRIPT_DIR%\abrir_editor.vbs\"'; ^
+ $shortcut.WorkingDirectory = '%SCRIPT_DIR%'; ^
+ if (Test-Path '%ICON_PATH%') { $shortcut.IconLocation = '%ICON_PATH%'; }; ^
+ $shortcut.Save()"
+echo Atalho criado na área de trabalho.
+echo Caminho do script: %SCRIPT_DIR%
+echo Caminho do ícone: %ICON_PATH%
+echo Caminho do desktop: %DESKTOP_DIR%
 
-if exist "%ICON_PATH%" (
-    powershell -NoProfile -Command ^
-    "$s = New-Object -ComObject WScript.Shell; ^
-     $shortcut = $s.CreateShortcut('%DESKTOP_DIR%\%LINK_NOME%'); ^
-     $shortcut.TargetPath = 'C:\Windows\System32\wscript.exe'; ^
-     $shortcut.Arguments = '\"%SCRIPT_DIR%\abrir_editor.vbs\"'; ^
-     $shortcut.WorkingDirectory = '%SCRIPT_DIR%'; ^
-     $shortcut.IconLocation = '%ICON_PATH%'; ^
-     $shortcut.Save()"
-
-    echo Caminho procurado: "%ICON_PATH%"
-
-)
 
 
 
@@ -120,5 +119,5 @@ echo  Configuração concluída com sucesso!
 echo.
 
 pause
-
-
+endlocal
+exit /b
