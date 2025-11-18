@@ -109,14 +109,11 @@ if exist "%ICON_PATH%" (
      $shortcut.IconLocation = '%ICON_PATH%'; ^
      $shortcut.Save()"
 ) else (
-    powershell -NoProfile -Command ^
-    "$s = New-Object -ComObject WScript.Shell; ^
-     $shortcut = $s.CreateShortcut('%DESKTOP_DIR%\%LINK_NOME%'); ^
-     $shortcut.TargetPath = 'C:\Windows\System32\wscript.exe'; ^
-     $shortcut.Arguments = '\"%SCRIPT_DIR%\abrir_editor.vbs\"'; ^
-     $shortcut.WorkingDirectory = '%SCRIPT_DIR%'; ^
-     $shortcut.Save()"
-     )
+    echo ERRO: Ícone não encontrado!
+    echo Caminho procurado: "%ICON_PATH%"
+    pause
+    exit /b
+)
 
 
 
