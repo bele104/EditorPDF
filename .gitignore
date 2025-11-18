@@ -13,7 +13,7 @@ build/
 dist/
 
 # Executáveis
-*.exe
+
 *.pkg
 
 # Logs
