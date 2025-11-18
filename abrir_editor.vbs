@@ -5,7 +5,7 @@ Set shell = CreateObject("WScript.Shell")
 currentDir = fso.GetParentFolderName(WScript.ScriptFullName)
 
 ' Script Python principal
-scriptPath = currentDir & "\main.py"
+scriptPath = currentDir & "\src\main.py"
 
 ' Executa Python instalado no sistema sem mostrar console
 shell.Run "cmd /c start /B python """ & scriptPath & """", 0, False
