@@ -209,8 +209,9 @@ class PDFEditor(QMainWindow):
 
         # Carrega tema com proteção
         try:
-            tema_path = os.path.join(os.path.dirname(__file__), "tema_escuro.qss")
-            with open(tema_path, "r", encoding="utf-8") as f:
+            print(ICONS_PATH)
+            
+            with open(G.TEMA_PATH, "r", encoding="utf-8") as f:
                 self.setStyleSheet(f.read())
 
         except Exception:

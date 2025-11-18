@@ -3,7 +3,7 @@ title Verificando Python, Instalando Bibliotecas e Criando Atalhos
 setlocal
 
 echo ===================================================
-echo  Iniciando o processo de instalao...
+echo  Iniciando o processo de instalacao...
 echo ===================================================
 
 REM ======================================================
@@ -24,7 +24,7 @@ if %errorlevel%==0 (
 
 echo.
 echo =============================
-echo  Python NÃO está instalado!
+echo  Python NAO esta instalado!
 echo Instale o Python para continuar.
 echo =============================
 echo.
@@ -51,7 +51,7 @@ echo.
 
 
 REM ======================================================
-REM =========   CRIAÇÃO DE ATALHOS  ======================
+REM =========   CRIACAO DE ATALHOS  ======================
 REM ======================================================
 
 echo Criando atalhos do sistema...
@@ -59,30 +59,32 @@ echo.
 
 :: Caminhos
 set SCRIPT_DIR=%~dp0
-set AHK_EXE=%SCRIPT_DIR%AutoHotkey\AutoHotkey.exe
-set AHK_SCRIPT=%SCRIPT_DIR%atalho.ahk
+set ASSETS=%SCRIPT_DIR%assets\
+set AHK_EXE=%ASSETS%AutoHotkey\AutoHotkey.exe
+set AHK_SCRIPT=%ASSETS%atalho.ahk
+set VBS_PATH=%SCRIPT_DIR%abrir_editor.vbs
 set STARTUP_DIR=%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup
-set DESKTOP_DIR=%USERPROFILE%\Desktop
 set LINK_NOME=Serena LOVE PDF.lnk
-set ICON_PATH=%SCRIPT_DIR%logoSerenaLove.ico
 
 :: Verifica se o executável e o script existem
 if not exist "%AHK_EXE%" (
-    echo ERRO: AutoHotkey.exe NÃO encontrado em:
+    echo ERRO: AutoHotkey.exe NAO encontrado em:
     echo %AHK_EXE%
     pause
     exit /b
 )
 
 if not exist "%AHK_SCRIPT%" (
-    echo ERRO: Script atalho.ahk NÃO encontrado!
+    echo ERRO: Script atalho.ahk NAO encontrado!
     pause
     exit /b
 )
 
-:: Comando final que precisa estar no atalho
-set TARGET=%AHK_EXE% "%AHK_SCRIPT%"
-
+if not exist "%VBS_PATH%" (
+    echo ERRO: abrir_editor.vbs NAO encontrado!
+    pause
+    exit /b
+)
 
 :: Criar atalho na inicialização
 echo  Criando atalho para iniciar com o Windows...
@@ -90,35 +92,33 @@ powershell -Command ^
   "$s=(New-Object -COM WScript.Shell).CreateShortcut('%STARTUP_DIR%\%LINK_NOME%');" ^
   "$s.TargetPath='%AHK_EXE%';" ^
   "$s.Arguments='\"%AHK_SCRIPT%\"';" ^
-  "$s.WorkingDirectory='%SCRIPT_DIR%';" ^
-  "if (Test-Path '%ICON_PATH%') {$s.IconLocation='%ICON_PATH%';}" ^
+  "$s.WorkingDirectory='%ASSETS%';" ^
   "$s.Save()"
 echo  Atalho criado no Startup.
 
 
 :: Criar atalho na área de trabalho
-echo Criando atalho na área de trabalho...
+echo Criando atalho na area de trabalho...
 powershell -NoProfile -Command ^
 "$desktop = [Environment]::GetFolderPath('Desktop'); ^
-$script = '%SCRIPT_DIR%'; ^
 $shortcut = (New-Object -ComObject WScript.Shell).CreateShortcut((Join-Path $desktop '%LINK_NOME%')); ^
 $shortcut.TargetPath = 'C:\Windows\System32\wscript.exe'; ^
-$shortcut.Arguments = ('\"' + $script + 'abrir_editor.vbs\"'); ^
-$shortcut.WorkingDirectory = $script; ^
+$shortcut.Arguments = ('\"%VBS_PATH%\"'); ^
+$shortcut.WorkingDirectory = '%SCRIPT_DIR%'; ^
 $shortcut.Save(); ^
 Write-Host 'Atalho criado com sucesso.'"
 
 
-echo Atalho criado na área de trabalho.
-echo Caminho do script: %SCRIPT_DIR%
-echo Caminho do ícone: %ICON_PATH%
-echo Caminho do desktop: %DESKTOP_DIR%
-echo Caminho do desktop:%AHK_SCRIPT%
-
-
-
 echo.
-echo  Configuração concluída com sucesso!
+echo Caminhos usados:
+echo SCRIPT_DIR: %SCRIPT_DIR%
+echo ASSETS: %ASSETS%
+echo AHK_EXE: %AHK_EXE%
+echo AHK_SCRIPT: %AHK_SCRIPT%
+echo VBS_PATH: %VBS_PATH%
+echo.
+
+echo  Configuracao concluida com sucesso!
 echo.
 
 pause

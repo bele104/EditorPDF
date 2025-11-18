@@ -7,12 +7,15 @@ import os
 # --------------------------------
 
 
-# Caminho do diretório onde está o script atual
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+# Caminho da pasta src (onde este arquivo está)
+SRC_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# Caminho da pasta de ícones dentro do script
-ICONS_PATH = os.path.join(SCRIPT_DIR, "icons")
+# Caminho da pasta raiz do projeto (um nível acima)
+ROOT_DIR = os.path.dirname(SRC_DIR)
 
+# Caminho da pasta de assets/icons
+ICONS_PATH = os.path.join(ROOT_DIR, "assets", "icons")
+TEMA_PATH = os.path.join(ROOT_DIR, "assets", "tema_escuro.qss")
 DOCUMENTOS = {}
 
 
