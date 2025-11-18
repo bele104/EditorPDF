@@ -64,7 +64,7 @@ set AHK_SCRIPT=%SCRIPT_DIR%atalho.ahk
 set STARTUP_DIR=%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup
 set DESKTOP_DIR=%USERPROFILE%\Desktop
 set LINK_NOME=Serena LOVE PDF.lnk
-set ICON_PATH=%SCRIPT_DIR%icone.ico
+set ICON_PATH=%SCRIPT_DIR%logoSerenaLove.ico
 
 :: Verifica se o executável e o script existem
 if not exist "%AHK_EXE%" (
@@ -96,15 +96,24 @@ powershell -Command ^
 echo  Atalho criado no Startup.
 
 
-powershell -NoProfile -Command "& { $s=New-Object -ComObject WScript.Shell; $shortcut=$s.CreateShortcut('%DESKTOP_DIR%\%LINK_NOME%'); $shortcut.TargetPath='C:\Windows\System32\wscript.exe'; $shortcut.Arguments='\"%SCRIPT_DIR%\abrir_editor.vbs\"'; $shortcut.WorkingDirectory='%SCRIPT_DIR%'; if(Test-Path '%ICON_PATH%') { $shortcut.IconLocation='%ICON_PATH%'; Write-Host 'Ícone usado: %ICON_PATH%' }; $shortcut.Save(); Write-Host 'Atalho criado!' }"
-
+:: Criar atalho na área de trabalho
+echo Criando atalho na área de trabalho...
+powershell -NoProfile -Command ^
+"$s = New-Object -ComObject WScript.Shell; ^
+ $shortcut = $s.CreateShortcut('%DESKTOP_DIR%\%LINK_NOME%'); ^
+ $shortcut.TargetPath = 'C:\Windows\System32\wscript.exe'; ^
+ $shortcut.Arguments = '\"%SCRIPT_DIR%\abrir_editor.vbs\"'; ^
+ $shortcut.WorkingDirectory = '%SCRIPT_DIR%'; ^
+ if (Test-Path '%ICON_PATH%') { $shortcut.IconLocation = '%ICON_PATH%'; Write-Host 'Ícone usado: %ICON_PATH%' } else { Write-Host 'Ícone não encontrado: %ICON_PATH%' }; ^
+ $shortcut.Save(); ^
+ Write-Host 'Atalho criado com sucesso.'"
 
 
 echo Atalho criado na área de trabalho.
 echo Caminho do script: %SCRIPT_DIR%
 echo Caminho do ícone: %ICON_PATH%
 echo Caminho do desktop: %DESKTOP_DIR%
-
+echo Caminho do desktop:%AHK_SCRIPT%
 
 
 
