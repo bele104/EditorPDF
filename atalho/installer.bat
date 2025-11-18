@@ -120,5 +120,5 @@ echo  Configuração concluída com sucesso!
 echo.
 
 pause
-endlocal
-exit /b
+
+
