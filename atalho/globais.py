@@ -1,12 +1,17 @@
 # globais.py
 import copy
+import os
 # globais.py
 # --------------------------------
 # Variáveis globais do editor PDF
 # --------------------------------
 
 
-ICONS_PATH = r"C:\Users\vinicius.silva\Programas\EditorPDF\atalho\icons"
+# Caminho do diretório onde está o script atual
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# Caminho da pasta de ícones dentro do script
+ICONS_PATH = os.path.join(SCRIPT_DIR, "icons")
 
 DOCUMENTOS = {}
 
