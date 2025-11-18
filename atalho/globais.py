@@ -6,7 +6,7 @@ import copy
 # --------------------------------
 
 
-ICONS_PATH = r"C:\Users\vinicius.silva\Programas\EditorPDF\icons"
+ICONS_PATH = r"C:\Users\vinicius.silva\Programas\EditorPDF\atalho\icons"
 
 DOCUMENTOS = {}
 

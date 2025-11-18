@@ -1,0 +1,10 @@
+PyQt6
+PyQt6-sip
+PyMuPDF
+pandas
+matplotlib
+pdfkit
+reportlab
+Pillow
+python-docx
+docx2pdf

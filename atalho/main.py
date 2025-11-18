@@ -1,5 +1,8 @@
 # ...existing code...
-import sys
+import sys, os
+sys.path.append(os.path.dirname(__file__))
+import ctypes
+
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QVBoxLayout, QHBoxLayout, QWidget, QPushButton,
     QListWidget, QListWidgetItem, QLabel, QScrollArea, QTextEdit, QDialog, QComboBox, QSizePolicy, QFrame, 
@@ -206,10 +209,13 @@ class PDFEditor(QMainWindow):
 
         # Carrega tema com proteção
         try:
-            with open("tema_escuro.qss", "r", encoding="utf-8") as f:
+            tema_path = os.path.join(os.path.dirname(__file__), "tema_escuro.qss")
+            with open(tema_path, "r", encoding="utf-8") as f:
                 self.setStyleSheet(f.read())
+
         except Exception:
             # fallback: sem stylesheet
+            print("⚠️ Aviso: falha ao carregar tema escuro, usando padrão do sistema.")
             pass
 
         self.setWindowTitle("Serena LOVE PDF")
@@ -1068,10 +1074,13 @@ if __name__ == "__main__":
     warnings.filterwarnings("ignore", category=DeprecationWarning)
     app = QApplication(sys.argv)
     try:
-        app.setWindowIcon(QIcon(f"{G.ICONS_PATH}/logo.ico"))
+        app.setWindowIcon(QIcon("icone.ico"))
     except Exception:
         pass
 
     janela = PDFEditor()
+    # Força o ícone do processo no Windows
+
+    ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("MeuPrograma.1")
     janela.show()
     sys.exit(app.exec())
