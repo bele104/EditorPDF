@@ -105,7 +105,7 @@ powershell -NoProfile -Command ^
  $shortcut.Arguments = '\"%SCRIPT_DIR%\abrir_editor.vbs\"'; ^
  $shortcut.WorkingDirectory = '%SCRIPT_DIR%'; ^
  if (Test-Path '%ICON_PATH%') { $shortcut.IconLocation = '%ICON_PATH%'; }; ^
- $shortcut.Save()"
+ "$s.Save()"
 echo Atalho criado na área de trabalho.
 echo Caminho do script: %SCRIPT_DIR%
 echo Caminho do ícone: %ICON_PATH%
