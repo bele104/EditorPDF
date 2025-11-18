@@ -108,11 +108,9 @@ if exist "%ICON_PATH%" (
      $shortcut.WorkingDirectory = '%SCRIPT_DIR%'; ^
      $shortcut.IconLocation = '%ICON_PATH%'; ^
      $shortcut.Save()"
-) else (
-    echo ERRO: Ícone não encontrado!
+
     echo Caminho procurado: "%ICON_PATH%"
-    pause
-    exit /b
+
 )
 
 
