@@ -185,6 +185,7 @@ class RenderizadorPaginas:
                 setattr(win, "_expanded_states", expanded_states)
         except Exception:
             pass
+        self._atualizar_separadores()
 
         # garante que quem quiser escute essa mudança
         try:
@@ -517,8 +518,7 @@ class RenderizadorPaginas:
                 # guarda na lista de separadores
                 self.separadores.append(separador)
 
-                # atualiza visibilidade imediatamente
-                self._atualizar_separadores()
+
 
 
 
@@ -557,21 +557,30 @@ class RenderizadorPaginas:
 # ...existing code...
 
     def _atualizar_separadores(self):
-        """
-        Atualiza todos os separadores da lista de forma segura,
-        ignorando objetos que já foram deletados.
-        """
-        # cria uma nova lista removendo separadores deletados
-        self.separadores = [sep for sep in self.separadores if not sip.isdeleted(sep)]
+        """Atualiza visibilidade dos separadores e remove os inválidos."""
+
+        separadores_validos = []
 
         for sep in self.separadores:
+            # ignora separadores destruídos
+            if sep is None or sip.isdeleted(sep):
+                continue
+
             a = self.paginas_widgets.get(getattr(sep, "page_above", None))
             b = self.paginas_widgets.get(getattr(sep, "page_below", None))
 
+            # se alguma das páginas não existe → escondemos
             if not a or not b:
                 sep.hide()
             else:
                 sep.setVisible(a.isVisible() and b.isVisible())
+
+            separadores_validos.append(sep)
+
+        # substitui pela lista limpa
+        self.separadores = separadores_validos
+
+
 
 
 
