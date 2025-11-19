@@ -305,7 +305,7 @@ class LogicaPagina(QObject):
         print("\n\n===================== CORTE DE DOCUMENTO =====================")
         print(f"page_above = {page_above}")
         print(f"page_below = {page_below}")
-
+        G.Historico.salvar_estado()
         # documento de origem
         doc_origem = G.PAGINAS[page_above]["doc_original"]
         print(f"Documento de origem: {doc_origem}")

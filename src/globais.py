@@ -30,54 +30,97 @@ ZOOM_PADRAO = 1.0
 # ------------------------------
 # Classe para desfazer/refazer
 # ------------------------------
+# ------------------------------
+# Classe para desfazer/refazer
+# ------------------------------
 class Historico:
     @staticmethod
     def salvar_estado():
         estado = {
-            "documentos": {nome: {"paginas": dados["paginas"][:]} 
-                           for nome, dados in DOCUMENTOS.items()},
-            "paginas": {pid: {"descricao": p["descricao"],
-                              "doc_original": p["doc_original"],
-                              "fitz_index": p["fitz_index"]}
-                        for pid, p in PAGINAS.items()}
+            # cópia das estruturas lógicas dos documentos
+            "documentos": {
+                nome: {
+                    "paginas": dados["paginas"][:],
+                    "doc": dados["doc"],   # referência original, não copia
+                    "path": dados.get("path")
+                }
+                for nome, dados in DOCUMENTOS.items()
+            },
+
+            # cópia profunda das páginas (doc_original, fitz_index, descricao)
+            "paginas": copy.deepcopy(PAGINAS)
         }
+
         HISTORICO.append(estado)
         FUTURO.clear()
+
 
     @staticmethod
     def desfazer():
         if not HISTORICO:
             return
+
+        # salva estado atual → futuro
         estado_atual = {
-            "documentos": {nome: {"paginas": dados["paginas"][:]} 
-                           for nome, dados in DOCUMENTOS.items()},
+            "documentos": {
+                nome: {
+                    "paginas": dados["paginas"][:],
+                    "doc": dados["doc"],
+                    "path": dados.get("path")
+                }
+                for nome, dados in DOCUMENTOS.items()
+            },
             "paginas": copy.deepcopy(PAGINAS)
         }
         FUTURO.append(estado_atual)
 
+        # restaura estado antigo
         estado = HISTORICO.pop()
-        for nome_doc, dados in DOCUMENTOS.items():
-            if nome_doc in estado["documentos"]:
-                dados["paginas"] = estado["documentos"][nome_doc]["paginas"]
 
+        # restaura DOCUMENTOS
+        DOCUMENTOS.clear()
+        for nome, dados in estado["documentos"].items():
+            DOCUMENTOS[nome] = {
+                "paginas": dados["paginas"][:],
+                "doc": dados["doc"],   # usa a mesma referência
+                "path": dados.get("path")
+            }
+
+        # restaura PAGINAS
         PAGINAS.clear()
         PAGINAS.update(copy.deepcopy(estado["paginas"]))
+
 
     @staticmethod
     def refazer():
         if not FUTURO:
             return
+
+        # salva estado atual → histórico
         estado_atual = {
-            "documentos": {nome: {"paginas": dados["paginas"][:]} 
-                           for nome, dados in DOCUMENTOS.items()},
+            "documentos": {
+                nome: {
+                    "paginas": dados["paginas"][:],
+                    "doc": dados["doc"],
+                    "path": dados.get("path")
+                }
+                for nome, dados in DOCUMENTOS.items()
+            },
             "paginas": copy.deepcopy(PAGINAS)
         }
         HISTORICO.append(estado_atual)
 
+        # restaura estado futuro
         estado = FUTURO.pop()
-        for nome_doc, dados in DOCUMENTOS.items():
-            if nome_doc in estado["documentos"]:
-                dados["paginas"] = estado["documentos"][nome_doc]["paginas"]
+
+        DOCUMENTOS.clear()
+        for nome, dados in estado["documentos"].items():
+            DOCUMENTOS[nome] = {
+                "paginas": dados["paginas"][:],
+                "doc": dados["doc"],
+                "path": dados.get("path")
+            }
 
         PAGINAS.clear()
         PAGINAS.update(copy.deepcopy(estado["paginas"]))
+
