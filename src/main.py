@@ -90,7 +90,7 @@ class PainelMesclar(QWidget):
 
         layout.addLayout(botoes_layout)
 
-        QTimer.singleShot(50, self.selecionar_arquivos)
+
 
     # Seleção de arquivos
     def selecionar_arquivos(self):
@@ -750,6 +750,9 @@ class PDFEditor(QMainWindow):
                 # quando o painel emitir fechar, desmarca o botão e fecha overlay
                 painel.fechar_sinal.connect(lambda: (botao.setChecked(False), self.fechar_overlay()))
                 self.mostrar_painel_flotante(painel)
+     
+                # abre o diálogo de seleção de arquivos automaticamente
+                self.painel_mesclar.selecionar_arquivos()
 
             elif modo == "Glossário":
                 # exemplo: você pode criar outro painel PainelGlossario()
