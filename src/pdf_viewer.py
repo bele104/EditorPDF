@@ -79,6 +79,14 @@ class RenderizadorPaginas:
         self.logica = logica
         self.scroll_area = scroll_area
 
+        self.separadores = []  # lista para todos os separadores
+
+
+        self.doc_selecionado = None  # nome do documento atualmente selecionado
+        self.pagina_foco = None      # id da página atualmente selecionada
+
+
+
         self.zoom_por_doc = {}
         self.pixmaps_originais = {}
         self.paginas_widgets = {}
@@ -105,11 +113,12 @@ class RenderizadorPaginas:
             parent_w.dragEnterEvent = self._drag_enter_event
             parent_w.dropEvent = self._drop_event
 
-    # Renderização principal
     def renderizar_com_zoom_padrao(self):
         """
         Atualiza toda a interface com o zoom atual,
         recriando widgets e a lista lateral, respeitando a ordem em G.DOCUMENTOS.
+        Também garante que o último documento/página selecionada continue visível
+        e atualiza os separadores.
         """
         if getattr(self, "bloquear_render", False):
             return
@@ -124,14 +133,43 @@ class RenderizadorPaginas:
         except Exception:
             expanded_states = {}
 
+        # limpa layout e widgets antigos
         self.limpar_layout()
 
         for nome_doc, dados in G.DOCUMENTOS.items():
             self._adicionar_cabecalho_doc(nome_doc)
             for idx, pagina_id in enumerate(dados["paginas"]):
-                # determina zoom para este documento (padrão ou específico)
                 zoom = self.zoom_por_doc.get(nome_doc, getattr(G, "ZOOM_PADRAO", 1.0))
                 self._adicionar_pagina(nome_doc, idx, pagina_id, zoom)
+
+        # --------- Lógica para restaurar último documento/página ---------
+        doc = getattr(self, "doc_selecionado", None)
+        pagina = getattr(self, "pagina_foco", None)
+
+        if doc:
+            # aplica visibilidade apenas ao documento selecionado
+            for pid, widget in self.paginas_widgets.items():
+                widget.setVisible(G.PAGINAS[pid]["doc_original"] == doc)
+
+            # determina página de foco
+            pagina_focus = None
+            if pagina and G.PAGINAS.get(pagina, {}).get("doc_original") == doc:
+                pagina_focus = pagina
+            else:
+                # pega a primeira página visível do documento
+                for pid, widget in self.paginas_widgets.items():
+                    if widget.isVisible():
+                        pagina_focus = pid
+                        break
+
+            if pagina_focus:
+                self.pagina_foco = pagina_focus
+                widget = self.paginas_widgets.get(pagina_focus)
+                if widget:
+                    self.scroll_area.ensureWidgetVisible(widget)
+
+        # --------- Atualiza separadores ---------
+        self._atualizar_separadores()
 
         # Atualiza tamanho das páginas na janela principal (se existir)
         win = self.lista_lateral.window()
@@ -153,6 +191,7 @@ class RenderizadorPaginas:
             AppSignals.layout_update_requested.emit()
         except Exception:
             pass
+
 
     def _drag_enter_event(self, event):
         if event.mimeData().hasText():
@@ -463,20 +502,23 @@ class RenderizadorPaginas:
 
             # Só cria separador se existe realmente uma página abaixo no mesmo documento
             if len(lista_paginas) > 1 and idx < len(lista_paginas) - 1:
-                # IDs reais das páginas acima/abaixo (capturados agora)
                 page_above = pagina_id
                 page_below = lista_paginas[idx + 1]
 
-                separador = self.criar_separador("icons/table-rows-split.svg")
-                # guarda os IDs (opcional, só para debug)
-                separador.page_above = page_above
-                separador.page_below = page_below
+                # cria separador já com IDs
+                separador = self.criar_separador("icons/table-rows-split.svg", page_above, page_below)
 
-                # conecta usando captura explícita dos valores (evita late binding)
+                # conecta clique
                 separador.clicked.connect(lambda _, a=page_above, b=page_below: self.separador_clicado(a, b))
 
-                # adiciona o separador ENTRE os widgets (fora do page_widget)
+                # adiciona ao layout
                 self.layout_central.addWidget(separador)
+
+                # guarda na lista de separadores
+                self.separadores.append(separador)
+
+                # atualiza visibilidade imediatamente
+                self._atualizar_separadores()
 
 
 
@@ -492,28 +534,44 @@ class RenderizadorPaginas:
 
 
     # ...existing code...
-    def criar_separador(self, icone_path=None):
+    def criar_separador(self, icone_path=None, page_above=None, page_below=None):
         separador = QPushButton()
-        separador.setFixedHeight(20)  # altura da linha
+        separador.setFixedHeight(20)
         separador.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        # remove padding/margins para evitar corte do conteúdo e mantém cor de fundo
         separador.setStyleSheet("background-color: red;")
         separador.setCursor(Qt.CursorShape.SplitVCursor)
         separador.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
-        # Usa o próprio ícone do botão em vez de um QLabel filho (evita problemas de geometry)
+        # IDs das páginas que ele separa
+        separador.page_above = page_above
+        separador.page_below = page_below
+
+        # adiciona ícone se fornecido
         if icone_path:
             separador.setIcon(QIcon(icone_path))
             separador.setIconSize(QSize(16, 16))
-            # garante que o ícone fique centralizado
             separador.setStyleSheet(separador.styleSheet() + "QPushButton { text-align: center; }")
 
-
-
-
         return separador
+
 # ...existing code...
 
+    def _atualizar_separadores(self):
+        """
+        Atualiza todos os separadores da lista de forma segura,
+        ignorando objetos que já foram deletados.
+        """
+        # cria uma nova lista removendo separadores deletados
+        self.separadores = [sep for sep in self.separadores if not sip.isdeleted(sep)]
+
+        for sep in self.separadores:
+            a = self.paginas_widgets.get(getattr(sep, "page_above", None))
+            b = self.paginas_widgets.get(getattr(sep, "page_below", None))
+
+            if not a or not b:
+                sep.hide()
+            else:
+                sep.setVisible(a.isVisible() and b.isVisible())
 
 
 
@@ -640,39 +698,67 @@ class RenderizadorPaginas:
 
     def ir_para_pagina(self, item, column=0):
         data = item.data(0, Qt.ItemDataRole.UserRole)
-        if data is None:
+        if not data:
             return
-        if data.get("tipo") == "pagina":
+
+        tipo = data.get("tipo")
+
+        if tipo == "pagina":
             pagina_id = data["pagina_id"]
-            doc_origem = G.PAGINAS[pagina_id]["doc_original"]
-            for pid, widget in self.paginas_widgets.items():
-                widget.setVisible(G.PAGINAS[pid]["doc_original"] == doc_origem)
-            widget = self.paginas_widgets.get(pagina_id)
-            if widget:
-                self.scroll_area.ensureWidgetVisible(widget)
-        elif data.get("tipo") == "doc":
+            nome_doc = G.PAGINAS[pagina_id]["doc_original"]
+            self._mostrar_paginas_por_documento(nome_doc, pagina_focus=pagina_id)
+            self._atualizar_separadores()
+        elif tipo == "doc":
             nome_doc = data["nome_doc"]
-            for pid, widget in self.paginas_widgets.items():
-                widget.setVisible(G.PAGINAS[pid]["doc_original"] == nome_doc)
-            for pid, widget in self.paginas_widgets.items():
-                if widget.isVisible():
-                    self.scroll_area.ensureWidgetVisible(widget)
-                    break
+            self._mostrar_paginas_por_documento(nome_doc)
+            self._atualizar_separadores()
+
 
     def mostrar_pagina_unica(self, pagina_id):
+        self.pagina_foco = pagina_id
         for pid, widget in self.paginas_widgets.items():
             widget.setVisible(pid == pagina_id)
+
         widget = self.paginas_widgets.get(pagina_id)
         if widget:
             self.scroll_area.ensureWidgetVisible(widget)
 
+        self._atualizar_separadores()
+
+
+
     def mostrar_paginas_documento(self, nome_doc):
-        for pagina_id, widget in self.paginas_widgets.items():
-            widget.setVisible(G.PAGINAS[pagina_id]["doc_original"] == nome_doc)
-        for pagina_id, widget in self.paginas_widgets.items():
-            if widget.isVisible():
+        self._mostrar_paginas_por_documento(nome_doc)
+        self._atualizar_separadores()
+
+
+    def _mostrar_paginas_por_documento(self, nome_doc, pagina_focus=None):
+        # guarda o documento selecionado
+        self.doc_selecionado = nome_doc
+
+        # Mostrar apenas páginas do documento
+        for pid, widget in self.paginas_widgets.items():
+            widget.setVisible(G.PAGINAS[pid]["doc_original"] == nome_doc)
+
+        # Escolher página para focar
+        if pagina_focus is None:
+            # tenta usar a última página focada se pertence ao documento
+            if self.pagina_foco and G.PAGINAS[self.pagina_foco]["doc_original"] == nome_doc:
+                pagina_focus = self.pagina_foco
+            else:
+                # senão pega a primeira página visível do documento
+                for pid, widget in self.paginas_widgets.items():
+                    if widget.isVisible():
+                        pagina_focus = pid
+                        break
+
+        if pagina_focus:
+            self.pagina_foco = pagina_focus  # guarda a página atual
+            widget = self.paginas_widgets.get(pagina_focus)
+            if widget:
                 self.scroll_area.ensureWidgetVisible(widget)
-                break
+
+
 
     def _animar_troca_pagina(self, nome_doc, idx, direcao, callback):
         paginas = G.DOCUMENTOS[nome_doc]["paginas"]
