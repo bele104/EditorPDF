@@ -214,7 +214,7 @@ class PainelMesclar(QWidget):
         # Aqui, quem tiver o RenderizadorPaginas deve atualizar a interface:
         # ex: tela_principal.gerar.renderizar_com_zoom_padrao()
 
-        QMessageBox.information(self, "Sucesso", f"Ação concluída! ELeaparecera na area de trabalho como '{nome_doc}'.")
+        QMessageBox.information(self, "Sucesso", f"Ação concluída! O Documento será exibido na área de edição com o nome:'{nome_doc}'.")
         self.mesclagem_concluida.emit(pdf_final)
         self.fechar_sinal.emit()
         AppSignals.documentos_atualizados.emit()
