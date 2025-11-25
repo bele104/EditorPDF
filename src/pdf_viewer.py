@@ -507,7 +507,7 @@ class RenderizadorPaginas:
                 page_below = lista_paginas[idx + 1]
 
                 # cria separador já com IDs
-                separador = self.criar_separador("icons/table-rows-split.svg", page_above, page_below)
+                separador = self.criar_separador(f"{G.ICONS_PATH}/table-rows-split.svg", page_above, page_below)
 
                 # conecta clique
                 separador.clicked.connect(lambda _, a=page_above, b=page_below: self.separador_clicado(a, b))
