@@ -214,7 +214,7 @@ class PainelMesclar(QWidget):
         # Aqui, quem tiver o RenderizadorPaginas deve atualizar a interface:
         # ex: tela_principal.gerar.renderizar_com_zoom_padrao()
 
-        QMessageBox.information(self, "Sucesso", f"Documento mesclado criado: Mesclado")
+        QMessageBox.information(self, "Sucesso", f"Ação concluída! ELeaparecera na area de trabalho como '{nome_doc}'.")
         self.mesclagem_concluida.emit(pdf_final)
         self.fechar_sinal.emit()
         AppSignals.documentos_atualizados.emit()
@@ -310,7 +310,7 @@ class PDFEditor(QMainWindow):
         modos = [
             (f"{G.ICONS_PATH}/folder-plus.svg", "Editar Documento"),
             (f"{G.ICONS_PATH}/file-stack.svg", "Mesclar Documentos"),
-            (f"{G.ICONS_PATH}/book-marked.svg", "Glossário")
+
         ]
 
         self.botoes_modos = []
@@ -780,12 +780,6 @@ class PDFEditor(QMainWindow):
                 # abre o diálogo de seleção de arquivos automaticamente
                 self.painel_mesclar.selecionar_arquivos()
 
-            elif modo == "Glossário":
-                # exemplo: você pode criar outro painel PainelGlossario()
-                painel = QLabel("Painel Glossário (implemente aqui)")
-                painel.setStyleSheet("color: white; padding: 12px;")
-                # conectar fechar se o painel tiver sinal; aqui usamos um botão fictício:
-                self.mostrar_painel_flotante(painel)
             elif modo == "Editar Documento":
                 print("Modo Editar Documento selecionado.")
 
