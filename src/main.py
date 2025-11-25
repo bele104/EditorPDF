@@ -1,5 +1,7 @@
 # ...existing code...
 import sys, os
+
+from matplotlib.pylab import rint
 sys.path.append(os.path.dirname(__file__))
 import ctypes
 
@@ -37,6 +39,7 @@ class PainelMesclar(QWidget):
     mesclagem_concluida = pyqtSignal(str) 
     def __init__(self,parent=None):
         super().__init__(parent)
+        
         self.setStyleSheet("""
             background-color: #222;
             border-radius: 12px;
@@ -52,12 +55,21 @@ class PainelMesclar(QWidget):
 
         # Cabeçalho
         cab = QHBoxLayout()
+
+        # Ícone SVG
+        icon_lbl = QLabel()
+        icon_lbl.setPixmap(QPixmap(f"{G.ICONS_PATH}/file-stack.svg").scaled(20, 20, Qt.AspectRatioMode.KeepAspectRatio))
+        cab.addWidget(icon_lbl)
+
+        # Texto
         lbl = QLabel("Mesclar Documentos")
         lbl.setStyleSheet("color: white; font-size: 16px; font-weight: bold;")
         cab.addWidget(lbl)
+
         cab.addStretch()
 
-        btnX = QPushButton("✖")
+        btnX = QPushButton()
+        btnX.setIcon(QIcon(f"{G.ICONS_PATH}/x.svg"))
         btnX.setFixedSize(24, 24)
         btnX.setStyleSheet("color: white; background: transparent;")
         btnX.clicked.connect(self.fechar_sinal)
@@ -78,12 +90,14 @@ class PainelMesclar(QWidget):
         botoes_layout = QHBoxLayout()
         botoes_layout.setSpacing(10)
 
-        self.btn_adicionar = QPushButton("Adicionar documentos…")
+        self.btn_adicionar = QPushButton("Adicionar mais documentos…")
+        self.btn_adicionar.setIcon(QIcon(f"{G.ICONS_PATH}/folder-plus.svg"))
         self.btn_adicionar.setStyleSheet("padding: 6px; background-color: #0078d7; color: white;")
         self.btn_adicionar.clicked.connect(self.selecionar_arquivos)
         botoes_layout.addWidget(self.btn_adicionar)
 
-        self.btn_mesclar = QPushButton("Mesclar documentos")
+        self.btn_mesclar = QPushButton("Mesclar")
+        self.btn_mesclar.setIcon(QIcon(f"{G.ICONS_PATH}/blend.svg"))
         self.btn_mesclar.setStyleSheet("padding: 6px; background-color: #28a745; color: white;")
         self.btn_mesclar.clicked.connect(self.mesclar_documentos)
         botoes_layout.addWidget(self.btn_mesclar)
@@ -119,12 +133,23 @@ class PainelMesclar(QWidget):
         layout.setContentsMargins(10, 6, 10, 6)
         layout.setSpacing(8)
 
+        icone = QLabel()
+        icone.setPixmap(QPixmap(f"{G.ICONS_PATH}/file.svg").scaled(
+            18, 18,
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation
+        ))
+
         label = QLabel(nome)
         label.setStyleSheet("color: white; font-size: 14px;")
+
+        layout.addWidget(icone)
         layout.addWidget(label)
         layout.addStretch()
 
-        btn_remover = QPushButton("✖")
+
+        btn_remover = QPushButton()
+        btn_remover.setIcon(QIcon(f"{G.ICONS_PATH}/x.svg"))
         btn_remover.setFixedSize(20, 20)
         btn_remover.setStyleSheet("color: white; background: transparent;")
         btn_remover.clicked.connect(lambda _, it=item: self._remover_item(it))
@@ -266,7 +291,66 @@ class PDFEditor(QMainWindow):
         linha_atalhos.addStretch()  # empurra para a esquerda
         cabecalho_layout.addLayout(linha_atalhos)
 
-        # Linha de Zoom
+        
+        # ------------------------------        
+        # Painel de Mesclar Documentos
+        self.painel_mesclar = PainelMesclar()
+        self.painel_mesclar.mesclagem_concluida.connect(self.carregar_pdf_mesclado)
+        self.painel_mesclar.fechar_sinal.connect(self.fechar_overlay)
+
+
+
+        # ------------------------------
+        # Linha de Modos de Edição (Editar / Separar)
+        # ------------------------------
+        linha_modos = QHBoxLayout()
+        linha_modos.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        linha_modos.setSpacing(30)
+
+        modos = [
+            (f"{G.ICONS_PATH}/folder-plus.svg", "Editar Documento"),
+            (f"{G.ICONS_PATH}/file-stack.svg", "Mesclar Documentos"),
+            (f"{G.ICONS_PATH}/book-marked.svg", "Glossário")
+        ]
+
+        self.botoes_modos = []
+
+        for svg_path, nome in modos:
+            vbox = QVBoxLayout()
+            vbox.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+            btn = QPushButton()
+            btn.setCheckable(True)
+            btn.setFixedSize(57, 57)
+            btn.setIcon(QIcon(svg_path))
+            btn.setIconSize(QSize(28, 28))
+
+            btn.setProperty("modo", nome)   #  <<----- AQUI!!!
+
+            btn.setStyleSheet("""
+                QPushButton {
+                    border-radius: 28px;
+                    background-color: #444;
+                }
+                QPushButton:checked {
+                    background-color: #0078d7;
+                }
+            """)
+            btn.clicked.connect(self.selecionar_unico_modo)
+
+
+            label = QLabel(nome)
+            label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            label.setStyleSheet("color: white; font-size: 12px;")
+
+            vbox.addWidget(btn)
+            vbox.addWidget(label)
+            linha_modos.addLayout(vbox)
+            self.botoes_modos.append(btn)
+
+        cabecalho_layout.addLayout(linha_modos)
+
+# Linha de Zoom
         linha_zoom = QHBoxLayout()
         linha_zoom.addStretch()
 
@@ -294,69 +378,11 @@ class PDFEditor(QMainWindow):
 
         cabecalho_layout.addLayout(linha_zoom)
 
-        # ------------------------------        
-        # Painel de Mesclar Documentos
-        self.painel_mesclar = PainelMesclar()
-        self.painel_mesclar.mesclagem_concluida.connect(self.carregar_pdf_mesclado)
-        self.painel_mesclar.fechar_sinal.connect(self.fechar_overlay)
-
-
-
-        # ------------------------------
-        # Linha de Modos de Edição (Editar / Separar)
-        # ------------------------------
-        linha_modos = QHBoxLayout()
-        linha_modos.setAlignment(Qt.AlignmentFlag.AlignLeft)
-        linha_modos.setSpacing(30)
-
-        modos = [
-            (f"{ICONS_PATH}/file-stack.svg", "Mesclar Documentos"),
-            (f"{ICONS_PATH}/book-marked.svg", "Glossário")
-        ]
-
-        self.botoes_modos = []
-
-        for svg_path, nome in modos:
-            vbox = QVBoxLayout()
-            vbox.setAlignment(Qt.AlignmentFlag.AlignCenter)
-
-            btn = QPushButton()
-            btn.setCheckable(True)
-            btn.setFixedSize(60, 60)
-            btn.setIcon(QIcon(svg_path))
-            btn.setIconSize(QSize(32, 32))
-
-            btn.setProperty("modo", nome)   #  <<----- AQUI!!!
-
-            btn.setStyleSheet("""
-                QPushButton {
-                    border-radius: 30px;
-                    background-color: #444;
-                }
-                QPushButton:checked {
-                    background-color: #0078d7;
-                }
-            """)
-            btn.clicked.connect(self.selecionar_unico_modo)
-
-
-            label = QLabel(nome)
-            label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            label.setStyleSheet("color: white; font-size: 12px;")
-
-            vbox.addWidget(btn)
-            vbox.addWidget(label)
-            linha_modos.addLayout(vbox)
-            self.botoes_modos.append(btn)
-
-        cabecalho_layout.addLayout(linha_modos)
-
 
         # ------------------------------
         # Painel esquerdo
         # ------------------------------
-        self.btn_abrir = QPushButton(" Abrir Doc")
-        self.btn_abrir.setIcon(QIcon(f"{ICONS_PATH}/folder-plus.svg"))
+
         # --- Lista lateral moderna com subpastas e renomear ---
         self.lista_paginas = QTreeWidget()
         self.lista_paginas.setHeaderHidden(True)
@@ -488,7 +514,7 @@ class PDFEditor(QMainWindow):
         self.lista_paginas.itemDoubleClicked.connect(self._renomear_item)
 
         layout_esquerda = QVBoxLayout()
-        layout_esquerda.addWidget(self.btn_abrir)
+  
 
         # Cria um label com ícone e texto lado a lado
         titulo_widget = QWidget()
@@ -503,7 +529,7 @@ class PDFEditor(QMainWindow):
         icon_label.setFixedSize(20, 20)  # garante tamanho consistente
 
         # Texto
-        text_label = QLabel("Arquivos e Páginas:")
+        text_label = QLabel("Documentos e Páginas:")
 
         # Adiciona ao layout horizontal
         titulo_layout.addWidget(icon_label)
@@ -515,7 +541,7 @@ class PDFEditor(QMainWindow):
         layout_esquerda.addWidget(self.lista_paginas)
         layout_esquerda.addStretch()
 
-        self.btn_abrir.clicked.connect(self.abrir_pdf)
+
 
         # ------------------------------
         # Área central com scroll (PDF)
@@ -760,6 +786,34 @@ class PDFEditor(QMainWindow):
                 painel.setStyleSheet("color: white; padding: 12px;")
                 # conectar fechar se o painel tiver sinal; aqui usamos um botão fictício:
                 self.mostrar_painel_flotante(painel)
+            elif modo == "Editar Documento":
+                print("Modo Editar Documento selecionado.")
+
+                # Referência ao botão que foi clicado
+                botao_editar = botao
+                self.botao_editar_documento = botao_editar
+
+                # Abre o PDF
+                self.abrir_pdf()
+
+                # Aguarda o tabwidget existir
+                if hasattr(self, "tabs"):
+
+                    # Criamos o handler uma vez só
+                    def quando_fechar_aba(index):
+                        self.tabs.removeTab(index)
+
+                        # desmarca o botão EDITAR DOCUMENTO ao fechar a aba
+                        if self.botao_editar_documento:
+                            self.botao_editar_documento.setChecked(False)
+
+                    # Conecta o fechamento da aba ao handler
+                    try:
+                        self.tabs.tabCloseRequested.disconnect()
+                    except:
+                        pass
+
+                    self.tabs.tabCloseRequested.connect(quando_fechar_aba)
 
     def atualizar_renderizador(self):
         # Se você tiver um renderizador de PDFs
@@ -926,16 +980,25 @@ class PDFEditor(QMainWindow):
     # Abrir PDF
     # ------------------------------
     def abrir_pdf(self):
-        # Chamado apenas pelo botão
-        caminho_origem, _ = QFileDialog.getOpenFileName(
-            self, "Abrir Documento", "",
-            "Arquivos suportados (*.pdf *.doc *.docx *.xls *.xlsx *.txt *.html *.jpg *.jpeg *.png)"
-        )
-        if caminho_origem:  # só continua se o usuário escolheu um arquivo
-            self.logica.abrir_documento(caminho_origem=caminho_origem)
+        dialog = QFileDialog(self)
+        dialog.setNameFilter("Arquivos suportados (*.pdf *.doc *.docx *.xls *.xlsx *.txt *.html *.jpg *.jpeg *.png)")
+
+        # CORRETO PARA QT6
+        dialog.setFileMode(QFileDialog.FileMode.ExistingFile)
+
+        if dialog.exec():
+            file_path = dialog.selectedFiles()[0]
+            self.logica.abrir_documento(caminho_origem=file_path)
+
             if hasattr(self, "gerar"):
                 self.gerar.renderizar_todas(getattr(G, "ZOOM_PADRAO", 1.0))
+
             self.atualizar_tamanho_paginas()
+        else:
+            # Usuário cancelou → desmarcar botão
+            if hasattr(self, "botao_editar_documento") and self.botao_editar_documento:
+                self.botao_editar_documento.setChecked(False)
+
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
