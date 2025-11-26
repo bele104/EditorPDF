@@ -40,8 +40,48 @@ echo.
 echo Instalando bibliotecas...
 echo.
 
-python -m pip install --upgrade pip
-python -m pip install PyQt6 PyQt6-sip PyMuPDF pandas matplotlib pdfkit reportlab Pillow python-docx docx2pdf
+:instalar
+echo.
+echo Instalando bibliotecas individualmente...
+echo.
+
+set LIBS= ^
+pip ^
+PyQt6 ^
+PyQt6-sip ^
+PyMuPDF ^
+pandas ^
+matplotlib ^
+pdfkit ^
+reportlab ^
+Pillow ^
+python-docx ^
+docx2pdf
+
+for %%L in (%LIBS%) do (
+    echo ------------------------------------
+    echo Instalando: %%L
+    echo ------------------------------------
+    python -m pip install %%L
+
+    if %errorlevel% neq 0 (
+        echo.
+        echo ❌ ERRO ao instalar a biblioteca: %%L
+        echo Continuando para a proxima...
+        echo.
+    ) else (
+        echo ✔ %%L instalada com sucesso!
+        echo.
+    )
+)
+
+echo.
+echo ====================================
+echo ✔ Processo de instalacao concluido!
+echo ====================================
+echo.
+
+goto criar_atalhos
 
 echo.
 echo ====================================
@@ -49,7 +89,7 @@ echo ✔ Todas as bibliotecas foram instaladas!
 echo ====================================
 echo.
 
-
+:criar_atalhos
 REM ======================================================
 REM =========   CRIACAO DE ATALHOS  ======================
 REM ======================================================
