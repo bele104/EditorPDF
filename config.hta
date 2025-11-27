@@ -1,0 +1,80 @@
+<html>
+<head>
+<title>Configuração - Serena LOVES PDF</title>
+<HTA:APPLICATION
+  APPLICATIONNAME="SerenaConfig"
+  SINGLEINSTANCE="yes"
+  SCROLL="no"
+  BORDER="thin"
+  WINDOWSTATE="normal" />
+
+<style>
+body { font-family: Consolas; background:#0b0b0b; color:#cfe2c6; padding:12px; }
+#status { 
+    background:#111; 
+    padding:20px; 
+    border:1px solid #222; 
+    height:80px; 
+    font-size:18px; 
+}
+</style>
+</head>
+
+<script language="VBScript">
+Option Explicit
+
+Sub Window_OnLoad
+    UpdateStatus "Preparando execução..."
+    RunInstaller
+End Sub
+
+' Atualiza texto na tela
+Sub UpdateStatus(msg)
+    Document.getElementById("status").innerText = msg
+End Sub
+
+Sub RunInstaller
+    Dim fso, tempBat, batFile, shell
+
+    Set fso = CreateObject("Scripting.FileSystemObject")
+    tempBat = fso.GetSpecialFolder(2) & "\serena_installer_tmp.bat"
+
+    ' Cria o BAT
+    Set batFile = fso.CreateTextFile(tempBat, True)
+
+    batFile.WriteLine "@echo off"
+    batFile.WriteLine "echo Criando atalhos..."
+    batFile.WriteLine ""
+    batFile.WriteLine "set SCRIPT_DIR=%~dp0"
+    batFile.WriteLine "set ASSETS=%SCRIPT_DIR%assets\"
+    batFile.WriteLine "set AHK_EXE=%ASSETS%AutoHotkey\AutoHotkey.exe"
+    batFile.WriteLine "set AHK_SCRIPT=%ASSETS%atalho.ahk"
+    batFile.WriteLine "set VBS_PATH=%SCRIPT_DIR%abrir_editor.vbs"
+    batFile.WriteLine "set STARTUP_DIR=%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup"
+    batFile.WriteLine "set LINK_NOME=Serena LOVES PDF.lnk"
+
+    batFile.WriteLine "echo Criando atalho no Startup..."
+    batFile.WriteLine "powershell -Command ""$s=(New-Object -COM WScript.Shell).CreateShortcut('%STARTUP_DIR%\%LINK_NOME%'); $s.TargetPath='%AHK_EXE%'; $s.Arguments='\"" %AHK_SCRIPT% \""'; $s.WorkingDirectory='%ASSETS%'; $s.Save()"""
+
+    batFile.WriteLine "echo Criando atalho na area de trabalho..."
+    batFile.WriteLine "powershell -NoProfile -Command ""$desktop=[Environment]::GetFolderPath('Desktop'); $shortcut=(New-Object -ComObject WScript.Shell).CreateShortcut((Join-Path $desktop '%LINK_NOME%')); $shortcut.TargetPath='C:\Windows\System32\wscript.exe'; $shortcut.Arguments='\"" %VBS_PATH% \""'; $shortcut.WorkingDirectory='%SCRIPT_DIR%'; $shortcut.Save()"""
+
+    batFile.WriteLine "echo Configuração concluída!"
+    batFile.WriteLine "exit"
+    batFile.Close
+
+    ' Executa escondido
+    UpdateStatus "Executando configuração..."
+    Set shell = CreateObject("WScript.Shell")
+    shell.Run """" & tempBat & """", 0, True
+
+    ' Final
+    UpdateStatus "? Concluído!"
+End Sub
+</script>
+
+<body>
+<h2>Configuração — Serena LOVES PDF</h2>
+<div id="status">Iniciando...</div>
+</body>
+</html>

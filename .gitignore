@@ -29,3 +29,11 @@ dist/
 # Configurações do Qt
 *.qrc
 *.pyproject
+
+# Ignorar Python portátil
+python3.11.9-PDFeditor/
+python-3.11*/
+python3*/
+python-embed*/
+#Executavel do atalho
+AutoHotkey/

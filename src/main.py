@@ -228,7 +228,7 @@ class PDFEditor(QMainWindow):
         ICONS_PATH = G.ICONS_PATH if hasattr(G, "ICONS_PATH") else "icons"
         # icone da janela (fallback protegido)
         try:
-            self.setWindowIcon(QIcon(f"{ICONS_PATH}/logo.ico"))
+            app.setWindowIcon(QIcon(f"{G.ICONS_PATH}\logoSerenaLove.ico"))
         except Exception:
             pass
 
@@ -244,7 +244,7 @@ class PDFEditor(QMainWindow):
             print("⚠️ Aviso: falha ao carregar tema escuro, usando padrão do sistema.")
             pass
 
-        self.setWindowTitle("Serena LOVE PDF")
+        self.setWindowTitle("Serena LOVES PDF")
         self.setGeometry(100, 100, 1000, 700)
         self.setAcceptDrops(True)  # Permite arrastar arquivos para a janela inteira
 
@@ -1135,7 +1135,7 @@ if __name__ == "__main__":
     warnings.filterwarnings("ignore", category=DeprecationWarning)
     app = QApplication(sys.argv)
     try:
-        app.setWindowIcon(QIcon("icone.ico"))
+        app.setWindowIcon(QIcon(f"{G.ICONS_PATH}\logoSerenaLove.ico"))
     except Exception:
         pass
 
