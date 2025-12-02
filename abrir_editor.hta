@@ -1,0 +1,96 @@
+﻿<html>
+<head>
+<title>Carregando…</title>
+
+<HTA:APPLICATION
+APPLICATIONNAME="SerenaLoader"
+BORDER="none"
+SCROLL="no"
+SINGLEINSTANCE="yes"
+WINDOWSTATE="normal"
+SHOWINTASKBAR="no"
+WIDTH="80"
+HEIGHT="40"
+/>
+
+<style>
+html, body {
+    margin: 0;
+    padding: 0;
+    background: #1e1f22;
+    font-family: Consolas, Segoe UI;
+    overflow: hidden;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+}
+
+/* Título com ícone */
+#title {
+    font-size: 60px;
+    color: #fe574c;
+    text-align: center;
+    margin-bottom: 10px;
+}
+
+/* Texto central carregando */
+#txt {
+    font-size: 50px;
+    color: #ffffff;
+    text-align: center;
+    white-space: nowrap;
+    animation: blink 1s steps(3) infinite;
+}
+
+/* Piscar os pontos */
+@keyframes blink {
+    0%   { content: "Carregando"; }
+    33%  { content: "Carregando."; }
+    66%  { content: "Carregando.."; }
+    100% { content: "Carregando..."; }
+}
+</style>
+
+</head>
+
+<script language="VBScript">
+Option Explicit
+
+Dim fso, shell, currentDir, pythonPath, scriptPath, cmd
+
+Sub Window_OnLoad
+    Set fso = CreateObject("Scripting.FileSystemObject")
+    Set shell = CreateObject("WScript.Shell")
+
+    currentDir  = GetFolder()
+
+    pythonPath = currentDir & "\assets\python3.11.9-PDFeditor\python.exe"
+    scriptPath = currentDir & "\src\main.py"
+
+    cmd = "cmd /c start """" /B """ & pythonPath & """ """ & scriptPath & """"
+    shell.Run cmd, 0, False
+
+    window.setTimeout "CloseLoader", 2000
+End Sub
+
+Function GetFolder()
+    Dim p
+    p = window.location.pathname
+    p = Replace(p, "/", "\")
+    p = Replace(p, "%20", " ")
+    GetFolder = Left(p, InStrRev(p, "\"))
+End Function
+
+Sub CloseLoader
+    window.close
+End Sub
+</script>
+
+<body>
+    <div id="title">📄 Serena Loves PDF</div>
+    <div id="txt">Carregando...</div>
+</body>
+</html>

@@ -1,80 +1,161 @@
+ï»¿<HTA:APPLICATION
+    APPLICATIONNAME="SerenaConfig"
+    SINGLEINSTANCE="yes"
+    SCROLL="no"
+    BORDER="thin"
+    WINDOWSTATE="normal"
+    ICON="assets/icons/logoSerenaLove.ico"
+>
+
 <html>
 <head>
-<title>Configuração - Serena LOVES PDF</title>
-<HTA:APPLICATION
-  APPLICATIONNAME="SerenaConfig"
-  SINGLEINSTANCE="yes"
-  SCROLL="no"
-  BORDER="thin"
-  WINDOWSTATE="normal" />
+    <title>ConfiguraÃ§Ã£o - Serena LOVES PDF</title>
+    <style>
+        body {
+            background: #1e1f22;
+            color: #e6e6e6;
+            font-family: "Segoe UI", Consolas, Arial;
+            padding: 20px;
+            margin: 0;
+        }
 
-<style>
-body { font-family: Consolas; background:#0b0b0b; color:#cfe2c6; padding:12px; }
-#status { 
-    background:#111; 
-    padding:20px; 
-    border:1px solid #222; 
-    height:80px; 
-    font-size:18px; 
-}
-</style>
+        h2 {
+            color: #fe574c;
+            font-weight: 600;
+            margin-bottom: 16px;
+            text-shadow: 0 0 6px rgba(254, 87, 76, 0.3);
+        }
+
+        #container {
+            background: #25262a;
+            border: 1px solid #2f3034;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 0 12px rgba(0,0,0,0.3);
+        }
+
+        #status {
+            background: #2a2b2f;
+            border: 1px solid #3a3b3f;
+            border-radius: 8px;
+            padding: 18px;
+            margin-top: 10px;
+            color: #ffffff;
+            font-size: 18px;
+        }
+
+        #loading-box {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 140px;
+            height: 140px;
+            transform: translate(-50%, -50%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+        }
+
+        #loading-box img {
+            width: 120px;
+            height: 120px;
+        }
+    </style>
 </head>
 
 <script language="VBScript">
 Option Explicit
 
+' ===============================
+' PEGA O CAMINHO REAL DO HTA
+' ===============================
+Function GetRealPath()
+    Dim path
+    path = Replace(Document.URL, "file:///", "")
+    path = Replace(path, "/", "\")
+    GetRealPath = Left(path, InStrRev(path, "\"))
+End Function
+
 Sub Window_OnLoad
-    UpdateStatus "Preparando execução..."
-    RunInstaller
+    UpdateStatus "Preparando execuÃ§Ã£o..."
+    
+    ' Executa a criaÃ§Ã£o de atalhos depois de 1 segundo, para garantir que o HTML apareÃ§a
+    window.setTimeout GetRef("SafeRunInstaller"), 1000
 End Sub
 
-' Atualiza texto na tela
 Sub UpdateStatus(msg)
     Document.getElementById("status").innerText = msg
 End Sub
 
+' ===============================
+' Instalador seguro
+' ===============================
+Sub SafeRunInstaller
+    On Error Resume Next ' Continua mesmo que haja erro
+    RunInstaller
+    If Err.Number <> 0 Then
+        UpdateStatus "âš  Erro ao criar atalhos: " & Err.Description
+    End If
+    On Error GoTo 0
+    
+    ' Oculta o loader
+    Document.getElementById("loading-box").style.display = "none"
+End Sub
+
 Sub RunInstaller
-    Dim fso, tempBat, batFile, shell
+    Dim base, assets, icon, ahkExe, ahkScript, htaPath
+    Dim shell, desktop, startup, linkName
 
-    Set fso = CreateObject("Scripting.FileSystemObject")
-    tempBat = fso.GetSpecialFolder(2) & "\serena_installer_tmp.bat"
-
-    ' Cria o BAT
-    Set batFile = fso.CreateTextFile(tempBat, True)
-
-    batFile.WriteLine "@echo off"
-    batFile.WriteLine "echo Criando atalhos..."
-    batFile.WriteLine ""
-    batFile.WriteLine "set SCRIPT_DIR=%~dp0"
-    batFile.WriteLine "set ASSETS=%SCRIPT_DIR%assets\"
-    batFile.WriteLine "set AHK_EXE=%ASSETS%AutoHotkey\AutoHotkey.exe"
-    batFile.WriteLine "set AHK_SCRIPT=%ASSETS%atalho.ahk"
-    batFile.WriteLine "set VBS_PATH=%SCRIPT_DIR%abrir_editor.vbs"
-    batFile.WriteLine "set STARTUP_DIR=%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup"
-    batFile.WriteLine "set LINK_NOME=Serena LOVES PDF.lnk"
-
-    batFile.WriteLine "echo Criando atalho no Startup..."
-    batFile.WriteLine "powershell -Command ""$s=(New-Object -COM WScript.Shell).CreateShortcut('%STARTUP_DIR%\%LINK_NOME%'); $s.TargetPath='%AHK_EXE%'; $s.Arguments='\"" %AHK_SCRIPT% \""'; $s.WorkingDirectory='%ASSETS%'; $s.Save()"""
-
-    batFile.WriteLine "echo Criando atalho na area de trabalho..."
-    batFile.WriteLine "powershell -NoProfile -Command ""$desktop=[Environment]::GetFolderPath('Desktop'); $shortcut=(New-Object -ComObject WScript.Shell).CreateShortcut((Join-Path $desktop '%LINK_NOME%')); $shortcut.TargetPath='C:\Windows\System32\wscript.exe'; $shortcut.Arguments='\"" %VBS_PATH% \""'; $shortcut.WorkingDirectory='%SCRIPT_DIR%'; $shortcut.Save()"""
-
-    batFile.WriteLine "echo Configuração concluída!"
-    batFile.WriteLine "exit"
-    batFile.Close
-
-    ' Executa escondido
-    UpdateStatus "Executando configuração..."
     Set shell = CreateObject("WScript.Shell")
-    shell.Run """" & tempBat & """", 0, True
 
-    ' Final
-    UpdateStatus "? Concluído!"
+    base = GetRealPath()
+    assets = base & "assets\"
+    icon = assets & "icons\logoSerenaLove.ico"
+    ahkExe = assets & "AutoHotkey\AutoHotkey.exe"
+    ahkScript = assets & "atalho.ahk"
+    htaPath = base & "abrir_editor.hta"
+
+    desktop = shell.SpecialFolders("Desktop")
+    startup = shell.ExpandEnvironmentStrings("%APPDATA%") & "\Microsoft\Windows\Start Menu\Programs\Startup"
+
+    linkName = "Serena LOVES PDF.lnk"
+
+    UpdateStatus "Criando atalhos..."
+
+    ' Atalho inicializaÃ§Ã£o AutoHotkey
+    CreateShortcut startup & "\" & linkName, ahkExe, """" & ahkScript & """", base, icon
+
+    ' Atalho desktop HTA usando mshta.exe
+    CreateShortcut desktop & "\" & linkName, "C:\Windows\System32\mshta.exe", """" & htaPath & """", base, icon
+
+    UpdateStatus "âœ” ConfiguraÃ§Ã£o concluÃ­da!"
+End Sub
+
+' ===============================
+' Criar Atalhos
+' ===============================
+Sub CreateShortcut(path, target, args, workdir, icon)
+    Dim wsh, sc
+    Set wsh = CreateObject("WScript.Shell")
+    Set sc = wsh.CreateShortcut(path)
+    sc.TargetPath = target
+    sc.Arguments = args
+    sc.WorkingDirectory = workdir
+    sc.IconLocation = icon
+    sc.Save
 End Sub
 </script>
 
 <body>
-<h2>Configuração — Serena LOVES PDF</h2>
-<div id="status">Iniciando...</div>
+<div id="loading-box">
+    <img src="assets/icons/loading.gif">
+</div>
+
+<h2>âš™ ConfiguraÃ§Ã£o â€” Serena LOVES PDF</h2>
+
+<div id="container">
+    <div id="status">Iniciando...</div>
+</div>
 </body>
 </html>
