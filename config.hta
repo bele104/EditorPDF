@@ -71,16 +71,24 @@ Option Explicit
 ' PEGA O CAMINHO REAL DO HTA
 ' ===============================
 Function GetRealPath()
-    Dim path
-    path = Replace(Document.URL, "file:///", "")
-    path = Replace(path, "/", "\")
-    GetRealPath = Left(path, InStrRev(path, "\"))
+    Dim p
+    p = Document.location.pathname
+
+    ' Remove o prefixo inicial (/) no Windows
+    If Left(p, 1) = "/" Then p = Mid(p, 2)
+
+    ' Troca "/" por "\"
+    p = Replace(p, "/", "\")
+
+    ' Retorna SÓ a pasta do HTA
+    GetRealPath = Left(p, InStrRev(p, "\"))
 End Function
+
 
 Sub Window_OnLoad
     UpdateStatus "Preparando execução..."
     
-    ' Executa a criação de atalhos depois de 1 segundo, para garantir que o HTML apareça
+    ' Executa a criação de atalhos depois de 1 segundo
     window.setTimeout GetRef("SafeRunInstaller"), 1000
 End Sub
 
@@ -92,22 +100,25 @@ End Sub
 ' Instalador seguro
 ' ===============================
 Sub SafeRunInstaller
-    On Error Resume Next ' Continua mesmo que haja erro
+    On Error Resume Next
     RunInstaller
     If Err.Number <> 0 Then
         UpdateStatus "⚠ Erro ao criar atalhos: " & Err.Description
     End If
     On Error GoTo 0
     
-    ' Oculta o loader
     Document.getElementById("loading-box").style.display = "none"
 End Sub
 
+' ===============================
+' Criar, apagar e recriar atalhos
+' ===============================
 Sub RunInstaller
-    Dim base, assets, icon, ahkExe, ahkScript, htaPath
-    Dim shell, desktop, startup, linkName
+    Dim base, assets, icon, ahkExe, ahkScript, htaPath, startVBS
+    Dim shell, desktop, startup, linkName, fso
 
     Set shell = CreateObject("WScript.Shell")
+    Set fso = CreateObject("Scripting.FileSystemObject")
 
     base = GetRealPath()
     assets = base & "assets\"
@@ -116,6 +127,9 @@ Sub RunInstaller
     ahkScript = assets & "atalho.ahk"
     htaPath = base & "abrir_editor.hta"
 
+    ' *** Arquivo start_serena.vbs ***
+    startVBS = assets & "start_serena.vbs"
+
     desktop = shell.SpecialFolders("Desktop")
     startup = shell.ExpandEnvironmentStrings("%APPDATA%") & "\Microsoft\Windows\Start Menu\Programs\Startup"
 
@@ -123,14 +137,33 @@ Sub RunInstaller
 
     UpdateStatus "Criando atalhos..."
 
-    ' Atalho inicialização AutoHotkey
+    ' ===============================
+    ' REMOVER atalhos antigos
+    ' ===============================
+    If fso.FileExists(desktop & "\" & linkName) Then
+        fso.DeleteFile desktop & "\" & linkName, True
+    End If
+
+    If fso.FileExists(startup & "\" & linkName) Then
+        fso.DeleteFile startup & "\" & linkName, True
+    End If
+
+    ' ===============================
+    ' CRIAR atalhos novos
+    ' ===============================
+
+    ' 1 — Atalho AutoHotkey na Inicialização
     CreateShortcut startup & "\" & linkName, ahkExe, """" & ahkScript & """", base, icon
 
-    ' Atalho desktop HTA usando mshta.exe
+    ' 2 — Atalho Desktop HTA
     CreateShortcut desktop & "\" & linkName, "C:\Windows\System32\mshta.exe", """" & htaPath & """", base, icon
+
+    ' 3 — **NOVO:** Atalho start_serena.vbs na Inicialização
+    CreateShortcut startup & "\start_serena.lnk", "wscript.exe", """" & startVBS & """", base, icon
 
     UpdateStatus "✔ Configuração concluída!"
 End Sub
+
 
 ' ===============================
 ' Criar Atalhos
